@@ -38,7 +38,7 @@ class ImageEditor(QMainWindow):
 
    
         # path/to/icon.png
-        action_paintbrush = QAction(QIcon(), "Paintbrush", self)
+        action_paintbrush = QAction(QIcon("assets/icons/paint_brush.png"), "Paintbrush", self)
         action_airbrush = QAction(QIcon(), "Airbrush", self)
         action_paint_bucket = QAction(QIcon(), "Paint Bucket", self)
         action_color_picker = QAction(QIcon(), "Color Picker", self)
