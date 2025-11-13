@@ -1,222 +1,153 @@
-from PyQt5.QtWidgets import (
-    QMainWindow, QGraphicsView, QGraphicsScene, QToolBar,
-    QAction, QDockWidget, QWidget, QVBoxLayout, QLabel, QSlider,
-    QColorDialog, QPushButton, QSpinBox, QComboBox, QGroupBox, QStackedWidget,
-    QWidgetAction, QFrame, QHBoxLayout, QGridLayout
-    )
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtWidgets import (QMainWindow, QGraphicsView, QGraphicsScene,
+                             QToolBar, QDockWidget, QWidget, QVBoxLayout,
+                             QStackedWidget, QAction, QMenu)
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPainter, QIcon, QColor
+
+from src.ui.tool_manager import ToolManager
+from src.ui.filter_manager import FilterManager
+from src.ui.color_picker_widget import ColorPickerWidget
+from src.ui.canvas_view import CanvasView
+
+from src.tools.brush_tool import BrushTool
+from src.tools.eraser_tool import EraserTool
+from src.tools.shape_tool import ShapeTool
+from src.tools.text_tool import TextTool
+from src.tools.bucket_tool import BucketTool
+from src.tools.selection_tool import SelectionTool
+from src.tools.color_picker_tool import ColorPickerTool
+
+from src.filters.brightness_contrast_filter import BrightnessContrastFilter
+from src.filters.blur_filter import BlurFilter
+from src.filters.sharpen_filter import SharpenFilter
+from src.filters.hue_saturation_filter import HueSaturationFilter
+from src.filters.invert_filter import InvertFilter
+from src.filters.grayscale_filter import GrayscaleFilter
+
+
 class ImageEditor(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Image Editor")
         self.setGeometry(100, 100, 1200, 800)
 
-        self.current_tool = "paintbrush"
-        self.current_color = QColor(0, 0, 0)  # Default to black
+        self.current_color = QColor(0, 0, 0)
+        self.tool_manager = ToolManager()
+        self.filter_manager = FilterManager()
 
-        self.color_palette = [
-            QColor(0, 0, 0),      # Black
-            QColor(255, 255, 255), # White
-            QColor(255, 0, 0),     # Red
-            QColor(0, 255, 0),     # Green
-            QColor(0, 0, 255),     # Blue
-            QColor(255, 255, 0),   # Yellow
-            QColor(255, 0, 255),   # Magenta
-            QColor(0, 255, 255),   # Cyan
-        ]
-        self.recent_colors = []  # Will store recently used colors
-
-        self.setup_ui()
-
-    def setup_ui(self):
         self.setup_central_widget()
-        self.setup_left_toolbar()
-        self.setup_right_dock()
-        self.setup_toggle_buttons()
-        self.setup_menu_bar()
-        self.left_toolbar_visible = True
-        self.right_dock_visible = True
+        self.setup_tools()
+        self.setup_filters()
+        self.setup_ui()
+        self.setup_menubar()
+
+        self.tool_manager.select_tool("paintbrush")
 
     def setup_central_widget(self):
         self.scene = QGraphicsScene()
-        self.view = QGraphicsView(self.scene)
-        self.view.setRenderHint(QPainter.Antialiasing)
+        self.view = CanvasView(self.scene, self.tool_manager)
         self.setCentralWidget(self.view)
 
-    def select_tool(self, tool_name):
-        """Handle tool selection and update UI"""
-        self.current_tool = tool_name
+    def setup_tools(self):
+        tools = [
+            SelectionTool(),
+            BrushTool("paintbrush", self.choose_color, self.current_color),
+            BrushTool("airbrush", self.choose_color, self.current_color),
+            EraserTool(),
+            BucketTool(self.choose_color, self.current_color),
+            ShapeTool("rectangle", self.choose_color, self.current_color),
+            ShapeTool("circle", self.choose_color, self.current_color),
+            ShapeTool("line", self.choose_color, self.current_color),
+            TextTool(self.choose_color, self.current_color),
+            ColorPickerTool(),
+        ]
 
-        for name, action in self.tool_actions.items():
-            action.setChecked(name == tool_name)
+        for tool in tools:
+            self.tool_manager.register_tool(tool)
 
-        self.update_right_panel_for_tool(tool_name)
+        self.tool_manager.set_tool_selection_callback(self.on_tool_selected)
 
-        self.auto_show_hide_color_picker(tool_name)
+    def setup_filters(self):
+        filters = [
+            BrightnessContrastFilter(),
+            BlurFilter(),
+            SharpenFilter(),
+            HueSaturationFilter(),
+            InvertFilter(),
+            GrayscaleFilter(),
+        ]
 
-    def toggle_left_toolbar_visibility(self):
-        self.left_toolbar_visible = not self.left_toolbar_visible
-        self.left_toolbar.setVisible(self.left_toolbar_visible)
-        
+        for filter_obj in filters:
+            self.filter_manager.register_filter(filter_obj)
+
+        self.filter_manager.set_filter_selection_callback(self.on_filter_selected)
+
+    def setup_ui(self):
+        self.setup_left_toolbar()
+        self.setup_right_dock()
+        self.setup_top_toolbar()
+
     def setup_left_toolbar(self):
-
         self.left_toolbar = QToolBar("Drawing Tools")
         self.left_toolbar.setOrientation(Qt.Vertical)
         self.addToolBar(Qt.LeftToolBarArea, self.left_toolbar)
 
-        action_selection = QAction(QIcon(), "Selection", self)
-        action_selection.setCheckable(True)
-        action_selection.triggered.connect(lambda: self.select_tool("selection"))
+        tools = self.tool_manager.get_tools()
 
-        action_paintbrush = QAction(QIcon("assets/icons/paint_brush.png"), "Paintbrush", self)
-        action_paintbrush.setCheckable(True)
-        action_paintbrush.setChecked(True)  # Default tool
-        action_paintbrush.triggered.connect(lambda: self.select_tool("paintbrush"))
+        self.left_toolbar.addAction(tools[0].create_action())
+        tools[0].get_action().triggered.connect(lambda: self.tool_manager.select_tool("selection"))
 
-        action_airbrush = QAction(QIcon(), "Airbrush", self)
-        action_airbrush.setCheckable(True)
-        action_airbrush.triggered.connect(lambda: self.select_tool("airbrush"))
-
-        action_eraser = QAction(QIcon(), "Eraser", self)
-        action_eraser.setCheckable(True)
-        action_eraser.triggered.connect(lambda: self.select_tool("eraser"))
-
-        action_paint_bucket = QAction(QIcon(), "Paint Bucket", self)
-        action_paint_bucket.setCheckable(True)
-        action_paint_bucket.triggered.connect(lambda: self.select_tool("paint_bucket"))
-
-        action_rectangle = QAction(QIcon(), "Rectangle", self)
-        action_rectangle.setCheckable(True)
-        action_rectangle.triggered.connect(lambda: self.select_tool("rectangle"))
-
-        action_circle = QAction(QIcon(), "Circle/Ellipse", self)
-        action_circle.setCheckable(True)
-        action_circle.triggered.connect(lambda: self.select_tool("circle"))
-
-        action_line = QAction(QIcon(), "Line", self)
-        action_line.setCheckable(True)
-        action_line.triggered.connect(lambda: self.select_tool("line"))
-
-        action_text = QAction(QIcon(), "Text", self)
-        action_text.setCheckable(True)
-        action_text.triggered.connect(lambda: self.select_tool("text"))
-
-        action_color_picker = QAction(QIcon(), "Eyedropper", self)
-        action_color_picker.setCheckable(True)
-        action_color_picker.triggered.connect(lambda: self.select_tool("color_picker"))
-
-        self.tool_actions = {
-            "selection": action_selection,
-            "paintbrush": action_paintbrush,
-            "airbrush": action_airbrush,
-            "eraser": action_eraser,
-            "paint_bucket": action_paint_bucket,
-            "rectangle": action_rectangle,
-            "circle": action_circle,
-            "line": action_line,
-            "text": action_text,
-            "color_picker": action_color_picker
-        }
-
-        self.left_toolbar.addAction(action_selection)
-        self.left_toolbar.addSeparator()
-        self.left_toolbar.addAction(action_paintbrush)
-        self.left_toolbar.addAction(action_airbrush)
-        self.left_toolbar.addAction(action_eraser)
-        self.left_toolbar.addAction(action_paint_bucket)
-        self.left_toolbar.addSeparator()
-        self.left_toolbar.addAction(action_rectangle)
-        self.left_toolbar.addAction(action_circle)
-        self.left_toolbar.addAction(action_line)
-        self.left_toolbar.addSeparator()
-        self.left_toolbar.addAction(action_text)
-        self.left_toolbar.addSeparator()
-        self.left_toolbar.addAction(action_color_picker)
         self.left_toolbar.addSeparator()
 
-        self.setup_filters_section()
-    def setup_filters_section(self):
-        """Create a collapsible filters section in the left toolbar"""
-        self.filters_expanded = False
-        action_filters_toggle = QAction(QIcon(), "▶ Filters", self)
-        action_filters_toggle.triggered.connect(self.toggle_filters_menu)
-        self.filters_toggle_action = action_filters_toggle
-        self.left_toolbar.addAction(action_filters_toggle)
-
-        self.filter_actions_list = []
-
-        action_brightness_contrast = QAction(QIcon(), "  Brightness/Contrast", self)
-        action_brightness_contrast.setCheckable(True)
-        action_brightness_contrast.triggered.connect(lambda: self.select_filter("brightness_contrast"))
-        self.filter_actions_list.append(action_brightness_contrast)
-
-        action_blur = QAction(QIcon(), "  Blur", self)
-        action_blur.setCheckable(True)
-        action_blur.triggered.connect(lambda: self.select_filter("blur"))
-        self.filter_actions_list.append(action_blur)
-
-        action_sharpen = QAction(QIcon(), "  Sharpen", self)
-        action_sharpen.setCheckable(True)
-        action_sharpen.triggered.connect(lambda: self.select_filter("sharpen"))
-        self.filter_actions_list.append(action_sharpen)
-
-        action_hue_saturation = QAction(QIcon(), "  Hue/Saturation", self)
-        action_hue_saturation.setCheckable(True)
-        action_hue_saturation.triggered.connect(lambda: self.select_filter("hue_saturation"))
-        self.filter_actions_list.append(action_hue_saturation)
-
-        action_invert = QAction(QIcon(), "  Invert Colors", self)
-        action_invert.setCheckable(True)
-        action_invert.triggered.connect(lambda: self.select_filter("invert"))
-        self.filter_actions_list.append(action_invert)
-
-        action_grayscale = QAction(QIcon(), "  Grayscale", self)
-        action_grayscale.setCheckable(True)
-        action_grayscale.triggered.connect(lambda: self.select_filter("grayscale"))
-        self.filter_actions_list.append(action_grayscale)
-
-        self.filter_tool_actions = {
-            "brightness_contrast": action_brightness_contrast,
-            "blur": action_blur,
-            "sharpen": action_sharpen,
-            "hue_saturation": action_hue_saturation,
-            "invert": action_invert,
-            "grayscale": action_grayscale
-        }
-
-        for action in self.filter_actions_list:
+        for i in range(1, 5):
+            action = tools[i].create_action()
             self.left_toolbar.addAction(action)
-            action.setVisible(False)  # Start hidden
+            tool = tools[i]
+            action.triggered.connect(lambda checked, t=tool: self.tool_manager.select_tool(t.get_tool_name()))
+
+        self.left_toolbar.addSeparator()
+
+        for i in range(5, 8):
+            action = tools[i].create_action()
+            self.left_toolbar.addAction(action)
+            tool = tools[i]
+            action.triggered.connect(lambda checked, t=tool: self.tool_manager.select_tool(t.get_tool_name()))
+
+        self.left_toolbar.addSeparator()
+
+        action = tools[8].create_action()
+        self.left_toolbar.addAction(action)
+        action.triggered.connect(lambda: self.tool_manager.select_tool("text"))
+
+        self.left_toolbar.addSeparator()
+
+        action = tools[9].create_action()
+        self.left_toolbar.addAction(action)
+        action.triggered.connect(lambda: self.tool_manager.select_tool("color_picker"))
+
+        self.left_toolbar.addSeparator()
+
+        self.filters_toggle_action = QAction("▶ Filters", self)
+        self.filters_toggle_action.triggered.connect(self.toggle_filters_menu)
+        self.left_toolbar.addAction(self.filters_toggle_action)
+
+        filters = self.filter_manager.get_filters()
+        self.filter_actions = []
+        for filter_obj in filters:
+            action = filter_obj.create_action()
+            self.left_toolbar.addAction(action)
+            action.setVisible(False)
+            action.triggered.connect(
+                lambda checked, f=filter_obj: self.filter_manager.select_filter(f.get_filter_name())
+            )
+            self.filter_actions.append(action)
 
     def toggle_filters_menu(self):
-        """Toggle the visibility of filter options"""
-        self.filters_expanded = not self.filters_expanded
+        expanded = self.filter_manager.toggle_expanded()
+        self.filters_toggle_action.setText("▼ Filters" if expanded else "▶ Filters")
+        for action in self.filter_actions:
+            action.setVisible(expanded)
 
-        if self.filters_expanded:
-            self.filters_toggle_action.setText("▼ Filters")
-        else:
-            self.filters_toggle_action.setText("▶ Filters")
-
-        for action in self.filter_actions_list:
-            action.setVisible(self.filters_expanded)
-
-    def select_filter(self, filter_name):
-        """Handle filter selection and update UI"""
-        self.current_tool = f"filter_{filter_name}"
-
-        for name, action in self.tool_actions.items():
-            action.setChecked(False)
-
-        for name, action in self.filter_tool_actions.items():
-            action.setChecked(name == filter_name)
-
-        self.update_right_panel_for_filter(filter_name)
-
-    def toggle_right_dock_visibility(self):
-        self.right_dock_visible = not self.right_dock_visible
-        self.right_dock.setVisible(self.right_dock_visible)
-        
     def setup_right_dock(self):
         self.right_dock = QDockWidget("Tool Options", self)
         self.right_dock.setAllowedAreas(Qt.RightDockWidgetArea)
@@ -226,613 +157,39 @@ class ImageEditor(QMainWindow):
 
         self.options_stack = QStackedWidget()
 
-        self.create_brush_settings()
-        self.create_eraser_settings()
-        self.create_shape_settings()
-        self.create_text_settings()
-        self.create_bucket_settings()
-        self.create_selection_settings()
+        self.tool_panel_indices = {}
+        for tool in self.tool_manager.get_tools():
+            panel = tool.create_settings_panel()
+            index = self.options_stack.addWidget(panel)
+            self.tool_panel_indices[tool.get_tool_name()] = index
 
-        self.create_brightness_contrast_settings()
-        self.create_blur_settings()
-        self.create_sharpen_settings()
-        self.create_hue_saturation_settings()
-        self.create_invert_settings()
-        self.create_grayscale_settings()
-
-        self.create_color_picker_panel()
+        self.filter_panel_indices = {}
+        for filter_obj in self.filter_manager.get_filters():
+            panel = filter_obj.create_settings_panel()
+            index = self.options_stack.addWidget(panel)
+            self.filter_panel_indices[filter_obj.get_filter_name()] = index
 
         main_layout.addWidget(self.options_stack)
         main_layout.addStretch()
 
-        self.add_bottom_color_picker(main_layout)
+        self.color_picker_widget = ColorPickerWidget(self.current_color)
+        self.color_picker_widget.set_color_change_callback(self.on_color_changed)
+        main_layout.addWidget(self.color_picker_widget)
 
         self.right_dock.setWidget(options_widget)
         self.addDockWidget(Qt.RightDockWidgetArea, self.right_dock)
 
-    def create_brush_settings(self):
-        """Settings for Paintbrush and Airbrush tools"""
-        brush_widget = QWidget()
-        layout = QVBoxLayout(brush_widget)
-
-        color_group = QGroupBox("Color")
-        color_layout = QVBoxLayout()
-        self.brush_color_button = QPushButton()
-        self.brush_color_button.setFixedSize(100, 30)
-        self.brush_color_button.setStyleSheet(f"QPushButton {{ background-color: {self.current_color.name()}; border: 2px solid #666; }}")
-        self.brush_color_button.clicked.connect(self.choose_color)
-        color_layout.addWidget(QLabel("Current Color:"))
-        color_layout.addWidget(self.brush_color_button)
-        color_group.setLayout(color_layout)
-
-        size_label = QLabel("Brush Size: 5")
-        self.brush_size_spin = QSpinBox()
-        self.brush_size_spin.setRange(1, 100)
-        self.brush_size_spin.setValue(5)
-        self.brush_size_spin.valueChanged.connect(lambda val: size_label.setText(f"Brush Size: {val}"))
-
-        opacity_label = QLabel("Opacity: 100%")
-        self.brush_opacity_slider = QSlider(Qt.Horizontal)
-        self.brush_opacity_slider.setRange(0, 100)
-        self.brush_opacity_slider.setValue(100)
-        self.brush_opacity_slider.valueChanged.connect(lambda val: opacity_label.setText(f"Opacity: {val}%"))
-
-        hardness_label = QLabel("Hardness: 100%")
-        self.brush_hardness_slider = QSlider(Qt.Horizontal)
-        self.brush_hardness_slider.setRange(0, 100)
-        self.brush_hardness_slider.setValue(100)
-        self.brush_hardness_slider.valueChanged.connect(lambda val: hardness_label.setText(f"Hardness: {val}%"))
-
-        layout.addWidget(color_group)
-        layout.addWidget(QLabel("Size:"))
-        layout.addWidget(size_label)
-        layout.addWidget(self.brush_size_spin)
-        layout.addWidget(opacity_label)
-        layout.addWidget(self.brush_opacity_slider)
-        layout.addWidget(hardness_label)
-        layout.addWidget(self.brush_hardness_slider)
-        layout.addStretch()
-
-        self.brush_settings_index = self.options_stack.addWidget(brush_widget)
-
-    def create_eraser_settings(self):
-        """Settings for Eraser tool"""
-        eraser_widget = QWidget()
-        layout = QVBoxLayout(eraser_widget)
-
-        size_label = QLabel("Eraser Size: 10")
-        self.eraser_size_spin = QSpinBox()
-        self.eraser_size_spin.setRange(1, 100)
-        self.eraser_size_spin.setValue(10)
-        self.eraser_size_spin.valueChanged.connect(lambda val: size_label.setText(f"Eraser Size: {val}"))
-
-        hardness_label = QLabel("Hardness: 100%")
-        self.eraser_hardness_slider = QSlider(Qt.Horizontal)
-        self.eraser_hardness_slider.setRange(0, 100)
-        self.eraser_hardness_slider.setValue(100)
-        self.eraser_hardness_slider.valueChanged.connect(lambda val: hardness_label.setText(f"Hardness: {val}%"))
-
-        layout.addWidget(QLabel("Size:"))
-        layout.addWidget(size_label)
-        layout.addWidget(self.eraser_size_spin)
-        layout.addWidget(hardness_label)
-        layout.addWidget(self.eraser_hardness_slider)
-        layout.addStretch()
-
-        self.eraser_settings_index = self.options_stack.addWidget(eraser_widget)
-
-    def create_shape_settings(self):
-        """Settings for Shape tools (Rectangle, Circle, Line)"""
-        shape_widget = QWidget()
-        layout = QVBoxLayout(shape_widget)
-
-        color_group = QGroupBox("Color")
-        color_layout = QVBoxLayout()
-        self.shape_color_button = QPushButton()
-        self.shape_color_button.setFixedSize(100, 30)
-        self.shape_color_button.setStyleSheet(f"QPushButton {{ background-color: {self.current_color.name()}; border: 2px solid #666; }}")
-        self.shape_color_button.clicked.connect(self.choose_color)
-        color_layout.addWidget(QLabel("Stroke Color:"))
-        color_layout.addWidget(self.shape_color_button)
-        color_group.setLayout(color_layout)
-
-        self.shape_fill_combo = QComboBox()
-        self.shape_fill_combo.addItems(["Stroke Only", "Fill Only", "Stroke + Fill"])
-
-        width_label = QLabel("Line Width: 2")
-        self.shape_width_spin = QSpinBox()
-        self.shape_width_spin.setRange(1, 50)
-        self.shape_width_spin.setValue(2)
-        self.shape_width_spin.valueChanged.connect(lambda val: width_label.setText(f"Line Width: {val}"))
-
-        layout.addWidget(color_group)
-        layout.addWidget(QLabel("Draw Mode:"))
-        layout.addWidget(self.shape_fill_combo)
-        layout.addWidget(width_label)
-        layout.addWidget(self.shape_width_spin)
-        layout.addStretch()
-
-        self.shape_settings_index = self.options_stack.addWidget(shape_widget)
-
-    def create_text_settings(self):
-        """Settings for Text tool"""
-        text_widget = QWidget()
-        layout = QVBoxLayout(text_widget)
-
-        self.text_font_combo = QComboBox()
-        self.text_font_combo.addItems(["Arial", "Times New Roman", "Courier New", "Helvetica", "Comic Sans MS"])
-
-        size_label = QLabel("Font Size: 12")
-        self.text_size_spin = QSpinBox()
-        self.text_size_spin.setRange(6, 144)
-        self.text_size_spin.setValue(12)
-        self.text_size_spin.valueChanged.connect(lambda val: size_label.setText(f"Font Size: {val}"))
-
-        color_group = QGroupBox("Color")
-        color_layout = QVBoxLayout()
-        self.text_color_button = QPushButton()
-        self.text_color_button.setFixedSize(100, 30)
-        self.text_color_button.setStyleSheet(f"QPushButton {{ background-color: {self.current_color.name()}; border: 2px solid #666; }}")
-        self.text_color_button.clicked.connect(self.choose_color)
-        color_layout.addWidget(QLabel("Text Color:"))
-        color_layout.addWidget(self.text_color_button)
-        color_group.setLayout(color_layout)
-
-        layout.addWidget(QLabel("Font:"))
-        layout.addWidget(self.text_font_combo)
-        layout.addWidget(size_label)
-        layout.addWidget(self.text_size_spin)
-        layout.addWidget(color_group)
-        layout.addStretch()
-
-        self.text_settings_index = self.options_stack.addWidget(text_widget)
-
-    def create_bucket_settings(self):
-        """Settings for Paint Bucket tool"""
-        bucket_widget = QWidget()
-        layout = QVBoxLayout(bucket_widget)
-
-        color_group = QGroupBox("Color")
-        color_layout = QVBoxLayout()
-        self.bucket_color_button = QPushButton()
-        self.bucket_color_button.setFixedSize(100, 30)
-        self.bucket_color_button.setStyleSheet(f"QPushButton {{ background-color: {self.current_color.name()}; border: 2px solid #666; }}")
-        self.bucket_color_button.clicked.connect(self.choose_color)
-        color_layout.addWidget(QLabel("Fill Color:"))
-        color_layout.addWidget(self.bucket_color_button)
-        color_group.setLayout(color_layout)
-
-        tolerance_label = QLabel("Tolerance: 30")
-        self.bucket_tolerance_slider = QSlider(Qt.Horizontal)
-        self.bucket_tolerance_slider.setRange(0, 100)
-        self.bucket_tolerance_slider.setValue(30)
-        self.bucket_tolerance_slider.valueChanged.connect(lambda val: tolerance_label.setText(f"Tolerance: {val}"))
-
-        layout.addWidget(color_group)
-        layout.addWidget(tolerance_label)
-        layout.addWidget(self.bucket_tolerance_slider)
-        layout.addStretch()
-
-        self.bucket_settings_index = self.options_stack.addWidget(bucket_widget)
-
-    def create_selection_settings(self):
-        """Settings for Selection tool"""
-        selection_widget = QWidget()
-        layout = QVBoxLayout(selection_widget)
-
-        info_label = QLabel("Click and drag to select an area.\nUse Edit menu for copy/paste/delete.")
-        info_label.setWordWrap(True)
-
-        layout.addWidget(info_label)
-        layout.addStretch()
-
-        self.selection_settings_index = self.options_stack.addWidget(selection_widget)
-
-    def create_brightness_contrast_settings(self):
-        """Settings for Brightness/Contrast filter"""
-        filter_widget = QWidget()
-        layout = QVBoxLayout(filter_widget)
-
-        self.brightness_label = QLabel("Brightness: 0")
-        self.brightness_slider = QSlider(Qt.Horizontal)
-        self.brightness_slider.setRange(-100, 100)
-        self.brightness_slider.setValue(0)
-        self.brightness_slider.valueChanged.connect(lambda val: self.brightness_label.setText(f"Brightness: {val}"))
-
-        self.contrast_label = QLabel("Contrast: 0")
-        self.contrast_slider = QSlider(Qt.Horizontal)
-        self.contrast_slider.setRange(-100, 100)
-        self.contrast_slider.setValue(0)
-        self.contrast_slider.valueChanged.connect(lambda val: self.contrast_label.setText(f"Contrast: {val}"))
-
-        apply_btn = QPushButton("Apply Filter")
-        reset_btn = QPushButton("Reset")
-        reset_btn.clicked.connect(lambda: (self.brightness_slider.setValue(0), self.contrast_slider.setValue(0)))
-
-        layout.addWidget(QLabel("Brightness:"))
-        layout.addWidget(self.brightness_label)
-        layout.addWidget(self.brightness_slider)
-        layout.addWidget(QLabel("Contrast:"))
-        layout.addWidget(self.contrast_label)
-        layout.addWidget(self.contrast_slider)
-        layout.addWidget(apply_btn)
-        layout.addWidget(reset_btn)
-        layout.addStretch()
-
-        self.brightness_contrast_settings_index = self.options_stack.addWidget(filter_widget)
-
-    def create_blur_settings(self):
-        """Settings for Blur filter"""
-        filter_widget = QWidget()
-        layout = QVBoxLayout(filter_widget)
-
-        blur_type_label = QLabel("Blur Type:")
-        self.blur_type_combo = QComboBox()
-        self.blur_type_combo.addItems(["Gaussian Blur", "Motion Blur", "Box Blur"])
-
-        radius_label = QLabel("Radius: 5")
-        self.blur_radius_slider = QSlider(Qt.Horizontal)
-        self.blur_radius_slider.setRange(1, 50)
-        self.blur_radius_slider.setValue(5)
-        self.blur_radius_slider.valueChanged.connect(lambda val: radius_label.setText(f"Radius: {val}"))
-
-        apply_btn = QPushButton("Apply Filter")
-        reset_btn = QPushButton("Reset")
-        reset_btn.clicked.connect(lambda: self.blur_radius_slider.setValue(5))
-
-        layout.addWidget(blur_type_label)
-        layout.addWidget(self.blur_type_combo)
-        layout.addWidget(radius_label)
-        layout.addWidget(self.blur_radius_slider)
-        layout.addWidget(apply_btn)
-        layout.addWidget(reset_btn)
-        layout.addStretch()
-
-        self.blur_settings_index = self.options_stack.addWidget(filter_widget)
-
-    def create_sharpen_settings(self):
-        """Settings for Sharpen filter"""
-        filter_widget = QWidget()
-        layout = QVBoxLayout(filter_widget)
-
-        amount_label = QLabel("Amount: 50%")
-        self.sharpen_amount_slider = QSlider(Qt.Horizontal)
-        self.sharpen_amount_slider.setRange(0, 100)
-        self.sharpen_amount_slider.setValue(50)
-        self.sharpen_amount_slider.valueChanged.connect(lambda val: amount_label.setText(f"Amount: {val}%"))
-
-        apply_btn = QPushButton("Apply Filter")
-        reset_btn = QPushButton("Reset")
-        reset_btn.clicked.connect(lambda: self.sharpen_amount_slider.setValue(50))
-
-        layout.addWidget(amount_label)
-        layout.addWidget(self.sharpen_amount_slider)
-        layout.addWidget(apply_btn)
-        layout.addWidget(reset_btn)
-        layout.addStretch()
-
-        self.sharpen_settings_index = self.options_stack.addWidget(filter_widget)
-
-    def create_hue_saturation_settings(self):
-        """Settings for Hue/Saturation filter"""
-        filter_widget = QWidget()
-        layout = QVBoxLayout(filter_widget)
-
-        hue_label = QLabel("Hue: 0")
-        self.hue_slider = QSlider(Qt.Horizontal)
-        self.hue_slider.setRange(-180, 180)
-        self.hue_slider.setValue(0)
-        self.hue_slider.valueChanged.connect(lambda val: hue_label.setText(f"Hue: {val}"))
-
-        saturation_label = QLabel("Saturation: 0")
-        self.saturation_slider = QSlider(Qt.Horizontal)
-        self.saturation_slider.setRange(-100, 100)
-        self.saturation_slider.setValue(0)
-        self.saturation_slider.valueChanged.connect(lambda val: saturation_label.setText(f"Saturation: {val}"))
-
-        lightness_label = QLabel("Lightness: 0")
-        self.lightness_slider = QSlider(Qt.Horizontal)
-        self.lightness_slider.setRange(-100, 100)
-        self.lightness_slider.setValue(0)
-        self.lightness_slider.valueChanged.connect(lambda val: lightness_label.setText(f"Lightness: {val}"))
-
-        apply_btn = QPushButton("Apply Filter")
-        reset_btn = QPushButton("Reset")
-        reset_btn.clicked.connect(lambda: (self.hue_slider.setValue(0), self.saturation_slider.setValue(0), self.lightness_slider.setValue(0)))
-
-        layout.addWidget(hue_label)
-        layout.addWidget(self.hue_slider)
-        layout.addWidget(saturation_label)
-        layout.addWidget(self.saturation_slider)
-        layout.addWidget(lightness_label)
-        layout.addWidget(self.lightness_slider)
-        layout.addWidget(apply_btn)
-        layout.addWidget(reset_btn)
-        layout.addStretch()
-
-        self.hue_saturation_settings_index = self.options_stack.addWidget(filter_widget)
-
-    def create_invert_settings(self):
-        """Settings for Invert Colors filter"""
-        filter_widget = QWidget()
-        layout = QVBoxLayout(filter_widget)
-
-        info_label = QLabel("This filter inverts all colors in the image.\nNo additional settings required.")
-        info_label.setWordWrap(True)
-
-        apply_btn = QPushButton("Apply Filter")
-
-        layout.addWidget(info_label)
-        layout.addWidget(apply_btn)
-        layout.addStretch()
-
-        self.invert_settings_index = self.options_stack.addWidget(filter_widget)
-
-    def create_grayscale_settings(self):
-        """Settings for Grayscale filter"""
-        filter_widget = QWidget()
-        layout = QVBoxLayout(filter_widget)
-
-        info_label = QLabel("Converts the image to grayscale.\nNo additional settings required.")
-        info_label.setWordWrap(True)
-
-        apply_btn = QPushButton("Apply Filter")
-
-        layout.addWidget(info_label)
-        layout.addWidget(apply_btn)
-        layout.addStretch()
-
-        self.grayscale_settings_index = self.options_stack.addWidget(filter_widget)
-
-    def create_color_picker_panel(self):
-        """Settings for Color Picker tool (Eyedropper)"""
-        picker_widget = QWidget()
-        layout = QVBoxLayout(picker_widget)
-
-        info_label = QLabel("Click on the canvas to pick a color from the image.")
-        info_label.setWordWrap(True)
-
-        layout.addWidget(info_label)
-        layout.addStretch()
-
-        self.color_picker_settings_index = self.options_stack.addWidget(picker_widget)
-
-    def add_bottom_color_picker(self, parent_layout):
-        """Add a persistent color picker section at the bottom of the right panel"""
-        separator = QFrame()
-        separator.setFrameShape(QFrame.HLine)
-        separator.setFrameShadow(QFrame.Sunken)
-        parent_layout.addWidget(separator)
-
-        self.color_section = QGroupBox("Color Picker")
-        color_layout = QVBoxLayout()
-
-        header_layout = QHBoxLayout()
-        toggle_color_btn = QPushButton("▼ Hide")
-        toggle_color_btn.setFixedWidth(80)
-        toggle_color_btn.setStyleSheet("QPushButton { background-color: transparent; border: none; text-align: left; }")
-        toggle_color_btn.clicked.connect(self.toggle_color_picker_visibility)
-        self.color_picker_toggle_btn = toggle_color_btn
-
-        header_layout.addWidget(QLabel("<b>Color Picker</b>"))
-        header_layout.addStretch()
-        header_layout.addWidget(toggle_color_btn)
-
-        color_layout.addLayout(header_layout)
-
-        self.color_picker_content = QWidget()
-        content_layout = QVBoxLayout(self.color_picker_content)
-
-        current_color_layout = QHBoxLayout()
-        current_color_layout.addWidget(QLabel("Current Color:"))
-
-        self.main_color_button = QPushButton()
-        self.main_color_button.setFixedSize(80, 40)
-        self.main_color_button.setStyleSheet(f"QPushButton {{ background-color: {self.current_color.name()}; border: 2px solid #666; }}")
-        self.main_color_button.clicked.connect(self.choose_color)
-        self.main_color_button.setToolTip("Click to choose a custom color")
-        current_color_layout.addWidget(self.main_color_button)
-        current_color_layout.addStretch()
-
-        content_layout.addLayout(current_color_layout)
-
-        palette_label = QLabel("Preset Colors:")
-        content_layout.addWidget(palette_label)
-
-        palette_grid = QGridLayout()
-        palette_grid.setSpacing(2)
-
-        self.palette_buttons = []
-        for i, color in enumerate(self.color_palette):
-            btn = QPushButton()
-            btn.setFixedSize(30, 30)
-            btn.setStyleSheet(f"QPushButton {{ background-color: {color.name()}; border: 1px solid #333; }} QPushButton:hover {{ border: 2px solid #fff; }}")
-            btn.clicked.connect(lambda checked, c=color: self.set_color_from_palette(c))
-            btn.setToolTip(color.name())
-            palette_grid.addWidget(btn, i // 4, i % 4)
-            self.palette_buttons.append(btn)
-
-        content_layout.addLayout(palette_grid)
-
-        recent_label = QLabel("Recent Colors:")
-        content_layout.addWidget(recent_label)
-
-        self.recent_colors_layout = QHBoxLayout()
-        self.recent_colors_layout.setSpacing(2)
-        self.recent_color_buttons = []
-
-        for i in range(8):
-            btn = QPushButton()
-            btn.setFixedSize(25, 25)
-            btn.setStyleSheet("QPushButton { background-color: #333; border: 1px solid #666; }")
-            btn.setEnabled(False)
-            btn.hide()  # Hide initially
-            self.recent_colors_layout.addWidget(btn)
-            self.recent_color_buttons.append(btn)
-
-        self.recent_colors_layout.addStretch()
-        content_layout.addLayout(self.recent_colors_layout)
-
-        color_layout.addWidget(self.color_picker_content)
-
-        self.color_section.setLayout(color_layout)
-        parent_layout.addWidget(self.color_section)
-
-        self.color_picker_visible = True
-
-    def toggle_color_picker_visibility(self):
-        """Toggle the visibility of the color picker content"""
-        self.color_picker_visible = not self.color_picker_visible
-        self.color_picker_content.setVisible(self.color_picker_visible)
-
-        if self.color_picker_visible:
-            self.color_picker_toggle_btn.setText("▼ Hide")
-        else:
-            self.color_picker_toggle_btn.setText("▶ Show")
-
-    def auto_show_hide_color_picker(self, tool_name):
-        """Automatically show/hide color picker based on tool selection"""
-        color_tools = ["paintbrush", "airbrush", "paint_bucket", "rectangle", "circle", "line", "text"]
-
-        should_show = tool_name in color_tools
-
-        if should_show and not self.color_picker_visible:
-            self.color_picker_visible = True
-            self.color_picker_content.setVisible(True)
-            self.color_picker_toggle_btn.setText("▼ Hide")
-        elif not should_show:
-            pass
-
-    def set_color_from_palette(self, color):
-        """Set the current color from a palette button click"""
-        self.current_color = color
-        self.update_all_color_displays()
-        self.add_to_recent_colors(color)
-
-    def add_to_recent_colors(self, color):
-        """Add a color to the recent colors list"""
-        for recent_color in self.recent_colors:
-            if recent_color.name() == color.name():
-                return
-
-        self.recent_colors.insert(0, color)
-
-        if len(self.recent_colors) > 8:
-            self.recent_colors = self.recent_colors[:8]
-
-        self.update_recent_colors_display()
-
-    def update_recent_colors_display(self):
-        """Update the recent colors button display"""
-        for i, btn in enumerate(self.recent_color_buttons):
-            if i < len(self.recent_colors):
-                color = self.recent_colors[i]
-                btn.setStyleSheet(f"QPushButton {{ background-color: {color.name()}; border: 1px solid #333; }} QPushButton:hover {{ border: 2px solid #fff; }}")
-                btn.setEnabled(True)
-                btn.show()
-                btn.setToolTip(color.name())
-                try:
-                    btn.clicked.disconnect()
-                except:
-                    pass
-                btn.clicked.connect(lambda checked, c=color: self.set_color_from_palette(c))
-            else:
-                btn.hide()
-
-    def update_all_color_displays(self):
-        """Update all color display buttons to show the current color"""
-        color_style = f"QPushButton {{ background-color: {self.current_color.name()}; border: 2px solid #666; }}"
-
-        self.brush_color_button.setStyleSheet(color_style)
-        self.shape_color_button.setStyleSheet(color_style)
-        self.text_color_button.setStyleSheet(color_style)
-        self.bucket_color_button.setStyleSheet(color_style)
-
-        main_style = f"QPushButton {{ background-color: {self.current_color.name()}; border: 2px solid #666; }}"
-        self.main_color_button.setStyleSheet(main_style)
-
-        self.brush_color_button.update()
-        self.shape_color_button.update()
-        self.text_color_button.update()
-        self.bucket_color_button.update()
-        self.main_color_button.update()
-
-    def choose_color(self):
-        """Open color picker dialog"""
-        color = QColorDialog.getColor(self.current_color, self, "Choose Color")
-        if color.isValid():
-            self.current_color = color
-            self.update_all_color_displays()
-            self.add_to_recent_colors(color)
-
-    def update_right_panel_for_filter(self, filter_name):
-        """Switch the right panel to show settings for the selected filter"""
-        filter_to_panel = {
-            "brightness_contrast": self.brightness_contrast_settings_index,
-            "blur": self.blur_settings_index,
-            "sharpen": self.sharpen_settings_index,
-            "hue_saturation": self.hue_saturation_settings_index,
-            "invert": self.invert_settings_index,
-            "grayscale": self.grayscale_settings_index,
-        }
-
-        panel_index = filter_to_panel.get(filter_name, self.brightness_contrast_settings_index)
-        self.options_stack.setCurrentIndex(panel_index)
-
-        filter_titles = {
-            "brightness_contrast": "Brightness/Contrast",
-            "blur": "Blur Filter",
-            "sharpen": "Sharpen Filter",
-            "hue_saturation": "Hue/Saturation",
-            "invert": "Invert Colors",
-            "grayscale": "Grayscale Filter",
-        }
-        self.right_dock.setWindowTitle(filter_titles.get(filter_name, "Filter Options"))
-
-    def update_right_panel_for_tool(self, tool_name):
-        """Switch the right panel to show settings for the selected tool"""
-        tool_to_panel = {
-            "paintbrush": self.brush_settings_index,
-            "airbrush": self.brush_settings_index,
-            "eraser": self.eraser_settings_index,
-            "paint_bucket": self.bucket_settings_index,
-            "rectangle": self.shape_settings_index,
-            "circle": self.shape_settings_index,
-            "line": self.shape_settings_index,
-            "text": self.text_settings_index,
-            "selection": self.selection_settings_index,
-            "color_picker": self.color_picker_settings_index,
-        }
-
-        panel_index = tool_to_panel.get(tool_name, self.brush_settings_index)
-        self.options_stack.setCurrentIndex(panel_index)
-
-        tool_titles = {
-            "paintbrush": "Paintbrush Options",
-            "airbrush": "Airbrush Options",
-            "eraser": "Eraser Options",
-            "paint_bucket": "Paint Bucket Options",
-            "rectangle": "Rectangle Options",
-            "circle": "Circle Options",
-            "line": "Line Options",
-            "text": "Text Options",
-            "selection": "Selection Tool",
-            "color_picker": "Eyedropper Tool",
-        }
-        self.right_dock.setWindowTitle(tool_titles.get(tool_name, "Tool Options"))
-
-    def setup_toggle_buttons(self):
-
-        self.top_toolbar = QToolBar("Toggle Panels")
+    def setup_top_toolbar(self):
+        self.top_toolbar = QToolBar("Panel Controls")
         self.addToolBar(Qt.TopToolBarArea, self.top_toolbar)
 
-        self.left_toolbar_button = QAction(QIcon(), "Drawing Tools", self)
+        self.left_toolbar_button = QAction("Tools Panel", self)
         self.left_toolbar_button.setCheckable(True)
         self.left_toolbar_button.setChecked(True)
         self.left_toolbar_button.triggered.connect(self.toggle_left_toolbar_visibility)
         self.top_toolbar.addAction(self.left_toolbar_button)
 
-        self.right_dock_button = QAction(QIcon(), "Options Panel", self)
+        self.right_dock_button = QAction("Options Panel", self)
         self.right_dock_button.setCheckable(True)
         self.right_dock_button.setChecked(True)
         self.right_dock_button.triggered.connect(self.toggle_right_dock_visibility)
@@ -841,34 +198,40 @@ class ImageEditor(QMainWindow):
         self.left_toolbar.visibilityChanged.connect(self.sync_left_toolbar_button)
         self.right_dock.visibilityChanged.connect(self.sync_right_dock_button)
 
+    def toggle_left_toolbar_visibility(self):
+        self.left_toolbar.setVisible(not self.left_toolbar.isVisible())
+
+    def toggle_right_dock_visibility(self):
+        self.right_dock.setVisible(not self.right_dock.isVisible())
+
     def sync_left_toolbar_button(self, visible):
-        """Sync the left toolbar button state with actual visibility"""
         self.left_toolbar_button.setChecked(visible)
-        self.left_toolbar_visible = visible
 
     def sync_right_dock_button(self, visible):
-        """Sync the right dock button state with actual visibility"""
         self.right_dock_button.setChecked(visible)
-        self.right_dock_visible = visible
 
-    def setup_menu_bar(self):
+    def setup_menubar(self):
+        menubar = self.menuBar()
 
-        menu_bar = self.menuBar()
-
-        file_menu = menu_bar.addMenu("&File")
+        file_menu = menubar.addMenu("File")
         file_menu.addAction("New")
-        file_menu.addAction("Open")
+        file_menu.addAction("Open...")
         file_menu.addAction("Save")
+        file_menu.addAction("Save As...")
         file_menu.addSeparator()
-        file_menu.addAction("Exit", self.close)
+        file_menu.addAction("Exit")
 
-        edit_menu = menu_bar.addMenu("&Edit")
+        edit_menu = menubar.addMenu("Edit")
         edit_menu.addAction("Undo")
         edit_menu.addAction("Redo")
+        edit_menu.addSeparator()
+        edit_menu.addAction("Cut")
+        edit_menu.addAction("Copy")
+        edit_menu.addAction("Paste")
 
-        view_menu = menu_bar.addMenu("&View")
+        view_menu = menubar.addMenu("View")
         toggle_left_toolbar_action = self.left_toolbar.toggleViewAction()
-        toggle_left_toolbar_action.setText("Toggle Drawing Tools")
+        toggle_left_toolbar_action.setText("Toggle Tools Panel")
         view_menu.addAction(toggle_left_toolbar_action)
 
         toggle_right_dock_action = self.right_dock.toggleViewAction()
@@ -879,3 +242,29 @@ class ImageEditor(QMainWindow):
         toggle_top_toolbar_action.setText("Toggle Panel Buttons")
         view_menu.addAction(toggle_top_toolbar_action)
 
+    def on_tool_selected(self, tool):
+        tool_name = tool.get_tool_name()
+        if tool_name in self.tool_panel_indices:
+            self.options_stack.setCurrentIndex(self.tool_panel_indices[tool_name])
+
+        for filter_obj in self.filter_manager.get_filters():
+            filter_obj.get_action().setChecked(False)
+
+        self.color_picker_widget.auto_show_for_tool(tool_name)
+
+    def on_filter_selected(self, filter_obj):
+        filter_name = filter_obj.get_filter_name()
+        if filter_name in self.filter_panel_indices:
+            self.options_stack.setCurrentIndex(self.filter_panel_indices[filter_name])
+
+        for tool in self.tool_manager.get_tools():
+            tool.get_action().setChecked(False)
+
+    def choose_color(self):
+        self.color_picker_widget.choose_color()
+
+    def on_color_changed(self, color):
+        self.current_color = color
+        for tool in self.tool_manager.get_tools():
+            if tool.needs_color() and hasattr(tool, 'update_color_display'):
+                tool.update_color_display(color)
