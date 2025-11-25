@@ -6,8 +6,7 @@ from src.core.base_tool import BaseTool
 
 class BrushTool(BaseTool):
     def __init__(self, tool_type="paintbrush", color_callback=None, current_color=None):
-        icon_path = "assets/icons/paint_brush.png" if tool_type == "paintbrush" else None
-        super().__init__(tool_type.capitalize(), icon_path)
+        super().__init__(tool_type.capitalize(), icon_path=None)
         self.tool_type = tool_type
         self.color_callback = color_callback
         self.current_color = current_color
