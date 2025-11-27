@@ -1,0 +1,903 @@
+@startuml CurrentPaintAppArchitecture
+
+skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+
+title Current Paint Application - Updated Architecture (with Undo/Redo)
+
+' ============================================================
+' MAIN APPLICATION
+' ============================================================
+
+package "Application Layer" <<Rectangle>> #E8F5E9 {
+  
+  class ImageEditor {
+    - current_color: QColor
+    - document: Document
+    - tool_manager: ToolManager
+    - filter_manager: FilterManager
+    - view: CanvasView
+    - options_stack: QStackedWidget
+    - color_picker_widget: ColorPickerWidget
+    - undo_action: QAction
+    - redo_action: QAction
+    ==
+    + setup_central_widget()
+    + setup_tools()
+    + setup_filters()
+    + setup_ui()
+    + setup_menubar()
+    --
+    + perform_undo()
+    + perform_redo()
+    + update_undo_redo_states()
+    --
+    + on_tool_selected(tool)
+    + on_filter_selected(filter)
+    + on_color_changed(color)
+    + apply_filter_to_canvas(filter)
+    --
+    + new_document()
+    + open_document()
+    + save_document()
+    + save_document_as()
+    --
+    + zoom_in()
+    + zoom_out()
+    + zoom_reset()
+    + fit_to_window()
+  }
+}
+
+' ============================================================
+' DOCUMENT & COMMAND SYSTEM (NEW!)
+' ============================================================
+
+package "Document & Command System" <<Rectangle>> #FFF3E0 {
+  
+  class Document {
+    - scene: QGraphicsScene
+    - history: CommandHistory
+    - width: int = 1920
+    - height: int = 1080
+    ==
+    + execute_command(cmd: ICommand)
+    + undo(): bool
+    + redo(): bool
+    + can_undo(): bool
+    + can_redo(): bool
+    + get_undo_name(): str
+    + get_redo_name(): str
+  }
+
+  class CommandHistory {
+    - undo_stack: List[ICommand]
+    - redo_stack: List[ICommand]
+    - max_undo: int = 20
+    ==
+    + execute(cmd, scene)
+    + undo(scene): bool
+    + redo(scene): bool
+    + can_undo(): bool
+    + can_redo(): bool
+    + clear()
+  }
+
+  interface ICommand {
+    + execute(scene)
+    + undo(scene)
+    + get_name(): str
+  }
+
+  class DrawCommand {
+    - graphics_item: QGraphicsItem
+    - name: str
+    ==
+    + execute(scene)
+    + undo(scene)
+    + get_name(): str
+  }
+
+  class ShapeCommand {
+    - shape_item: QGraphicsItem
+    - shape_type: str
+    ==
+    + execute(scene)
+    + undo(scene)
+  }
+
+  class TextCommand {
+    - text_item: QGraphicsItem
+    ==
+    + execute(scene)
+    + undo(scene)
+  }
+  
+  class FilterCommand {
+    - before_image: QImage
+    - after_image: QImage
+    - filter_name: str
+    ==
+    + execute(scene)
+    + undo(scene)
+    + get_name(): str
+  }
+}
+
+' ============================================================
+' UI COMPONENTS
+' ============================================================
+
+package "UI Components" <<Rectangle>> #E3F2FD {
+  
+  class CanvasView {
+    - document: Document
+    - tool_manager: ToolManager
+    ==
+    + mousePressEvent(event)
+    + mouseMoveEvent(event)
+    + mouseReleaseEvent(event)
+    + wheelEvent(event)
+    --
+    Forwards mouse events to active tool
+    Executes returned commands through Document
+    Uses view.mapToScene() for coordinates
+    Ctrl+Wheel for zoom at cursor
+  }
+
+  class ToolManager {
+    - tools: List[BaseTool]
+    - current_tool: BaseTool
+    - tool_selection_callback: Callable
+    ==
+    + register_tool(tool)
+    + select_tool(tool_name)
+    + get_current_tool(): BaseTool
+    + get_tools(): List
+    + update_tool_actions(selected)
+  }
+
+  class FilterManager {
+    - filters: List[BaseFilter]
+    - current_filter: BaseFilter
+    - filters_expanded: bool
+    - filter_selection_callback: Callable
+    ==
+    + register_filter(filter)
+    + select_filter(filter_name)
+    + get_filters(): List
+    + get_filter_by_name(name): BaseFilter
+    + toggle_expanded(): bool
+  }
+
+  class ColorPickerWidget {
+    - current_color: QColor
+    - color_change_callback: Callable
+    ==
+    + choose_color()
+    + set_color_change_callback(cb)
+    + auto_show_for_tool(tool_name)
+    --
+    SINGLE color picker for all tools
+  }
+}
+
+' ============================================================
+' TOOL BASE CLASS
+' ============================================================
+
+package "Tools System" <<Rectangle>> #C8E6C9 {
+  
+  abstract class BaseTool {
+    # name: str
+    # icon_path: str
+    # _action: QAction
+    # _settings_widget: QWidget
+    ==
+    + {abstract} create_action(): QAction
+    + {abstract} create_settings_panel(): QWidget
+    + {abstract} get_tool_name(): str
+    --
+    + get_action(): QAction
+    + get_settings_widget(): QWidget
+    + needs_color(): bool
+    + on_tool_selected()
+    + on_tool_deselected()
+    --
+    + mouse_press_event(event, scene, view)
+    + mouse_move_event(event, scene, view)
+    + mouse_release_event(event, scene, view): ICommand
+  }
+}
+
+' ============================================================
+' CONCRETE TOOLS (Updated!)
+' ============================================================
+
+package "Concrete Tools" <<Rectangle>> #D1C4E9 {
+  
+  class BrushTool {
+    - tool_type: str ["paintbrush", "airbrush"]
+    - current_color: QColor
+    - size_spin: QSpinBox
+    - opacity_slider: QSlider
+    - hardness_slider: QSlider
+    - current_path: QPainterPath
+    - current_item: QGraphicsPathItem
+    ==
+    + create_settings_panel(): QWidget
+    + needs_color(): bool
+    --
+    + mouse_press_event(event, scene, view)
+    + mouse_move_event(event, scene, view)
+    + mouse_release_event(event, scene, view): DrawCommand
+    --
+    ✅ WORKING: Actually draws strokes
+    ✅ Returns DrawCommand for undo/redo
+    ✅ Uses view.mapToScene() for coordinates
+    ✅ No redundant color button
+  }
+
+  class EraserTool {
+    - size_spin: QSpinBox
+    - current_path: QPainterPath
+    - current_item: QGraphicsPathItem
+    ==
+    + mouse_press_event(event, scene, view)
+    + mouse_move_event(event, scene, view)
+    + mouse_release_event(event, scene, view): DrawCommand
+    --
+    ✅ WORKING: Draws white strokes
+    ✅ Returns DrawCommand for undo/redo
+  }
+
+  class SelectionTool {
+    - mode_combo: QComboBox
+    - feather_slider: QSlider
+    ==
+    NOT YET UPDATED for commands
+  }
+
+  class ShapeTool {
+    - shape_type: str
+    - fill_checkbox: QCheckBox
+    - stroke_width: QSpinBox
+    ==
+    NOT YET UPDATED for commands
+  }
+
+  class TextTool {
+    - font_combo: QFontComboBox
+    - size_spin: QSpinBox
+    ==
+    NOT YET UPDATED for commands
+  }
+
+  class BucketTool {
+    - tolerance_slider: QSlider
+    ==
+    NOT YET UPDATED for commands
+  }
+
+  class ColorPickerTool {
+    ==
+    Click to pick color
+  }
+  
+  class ZoomTool {
+    - image_editor: ImageEditor
+    - zoom_in_btn: QPushButton
+    - zoom_out_btn: QPushButton
+    - zoom_reset_btn: QPushButton
+    - zoom_fit_btn: QPushButton
+    ==
+    + create_settings_panel(): QWidget
+    + needs_color(): bool
+    --
+    ✅ WORKING: Provides zoom controls
+    ✅ Buttons call ImageEditor zoom methods
+  }
+}
+
+' ============================================================
+' FILTER SYSTEM (Unchanged)
+' ============================================================
+
+package "Filters System" <<Rectangle>> #FFE0B2 {
+  
+  abstract class BaseFilter {
+    # name: str
+    # _action: QAction
+    # _settings_widget: QWidget
+    ==
+    + {abstract} create_action(): QAction
+    + {abstract} create_settings_panel(): QWidget
+    + {abstract} get_filter_name(): str
+    + {abstract} apply_filter(image)
+  }
+
+  class BlurFilter {
+    - blur_type_combo: QComboBox
+    - radius_slider: QSlider
+  }
+
+  class BrightnessContrastFilter {
+    - brightness_slider: QSlider
+    - contrast_slider: QSlider
+  }
+
+  class HueSaturationFilter {
+    - hue_slider: QSlider
+    - saturation_slider: QSlider
+  }
+
+  class SharpenFilter {
+    - amount_slider: QSlider
+  }
+
+  class InvertFilter {
+    - apply_btn: QPushButton
+    ==
+    + apply_filter(image): QImage
+    --
+    ✅ WORKING: Uses invertPixels()
+    ✅ Connected to FilterCommand
+  }
+  
+  class GrayscaleFilter
+}
+
+' ============================================================
+' PYQT5 FRAMEWORK
+' ============================================================
+
+package "PyQt5 Framework" <<Rectangle>> #B2DFDB {
+  
+  class QMainWindow
+  class QGraphicsView
+  class QGraphicsScene {
+    + sceneRect: QRectF(0, 0, 1920, 1080)
+  }
+}
+
+' ============================================================
+' RELATIONSHIPS
+' ============================================================
+
+' Main app relationships
+ImageEditor --|> QMainWindow
+ImageEditor *-- Document
+ImageEditor *-- ToolManager
+ImageEditor *-- FilterManager
+ImageEditor *-- CanvasView
+ImageEditor *-- ColorPickerWidget
+
+' Document relationships
+Document *-- QGraphicsScene
+Document *-- CommandHistory
+CommandHistory o-- "many" ICommand
+ICommand <|.. DrawCommand
+ICommand <|.. ShapeCommand
+ICommand <|.. TextCommand
+ICommand <|.. FilterCommand
+
+' UI relationships
+CanvasView --|> QGraphicsView
+CanvasView --> Document
+CanvasView --> ToolManager
+ToolManager o-- "many" BaseTool
+FilterManager o-- "many" BaseFilter
+
+' Tool inheritance
+BaseTool <|-- BrushTool
+BaseTool <|-- EraserTool
+BaseTool <|-- SelectionTool
+BaseTool <|-- ShapeTool
+BaseTool <|-- TextTool
+BaseTool <|-- BucketTool
+BaseTool <|-- ColorPickerTool
+BaseTool <|-- ZoomTool
+
+' Filter inheritance
+BaseFilter <|-- BlurFilter
+BaseFilter <|-- SharpenFilter
+BaseFilter <|-- BrightnessContrastFilter
+BaseFilter <|-- HueSaturationFilter
+BaseFilter <|-- InvertFilter
+BaseFilter <|-- GrayscaleFilter
+
+' Command creation
+BrushTool ..> DrawCommand : creates
+EraserTool ..> DrawCommand : creates
+InvertFilter ..> FilterCommand : uses
+
+' ============================================================
+' NOTES - FEATURES STATUS
+' ============================================================
+
+note as FeatureStatus
+  **✅ WORKING:**
+  
+  • Brush tool draws strokes on canvas
+  • Eraser tool (white strokes) with undo/redo
+  • Zoom tool with In/Out/Reset/Fit buttons
+  • Invert filter with undo/redo
+  • Undo/Redo (Ctrl+Z / Ctrl+Shift+Z)
+  • Command pattern with undo/redo stacks (20 commands max)
+  • Canvas: 1920x1080 default, resizes to loaded images
+  • Proper coordinate mapping
+  • Single color picker widget
+  • Menu items show command names
+  • Dynamic menu enable/disable
+  • Image save/load (PNG, JPG, BMP)
+  • New/Open/Save/Save As with dialogs
+  • Auto-fit images to window on load
+  • Zoom: keyboard shortcuts (Ctrl+/-, Ctrl+0, Ctrl+F)
+  • Zoom buttons in toolbar & tool panel
+  • Ctrl+Mouse wheel zoom at cursor
+  
+  **❌ NOT WORKING:**
+  
+  • Other tools (shapes, text, bucket) - no commands
+  • Other filters - not integrated with commands
+  • Selection system
+  • Clipboard operations
+  • Layer system
+end note
+
+@enduml
+
+' ============================================================
+' MAIN APPLICATION
+' ============================================================
+
+package "Application Layer" <<Rectangle>> #E8F5E9 {
+  
+  class ImageEditor {
+    - current_color: QColor
+    - tool_manager: ToolManager
+    - filter_manager: FilterManager
+    - scene: QGraphicsScene
+    - view: CanvasView
+    - options_stack: QStackedWidget
+    - color_picker_widget: ColorPickerWidget
+    ==
+    + setup_central_widget()
+    + setup_tools()
+    + setup_filters()
+    + setup_ui()
+    + setup_menubar()
+    --
+    + on_tool_selected(tool)
+    + on_filter_selected(filter)
+    + on_color_changed(color)
+    + choose_color()
+  }
+}
+
+' ============================================================
+' UI COMPONENTS
+' ============================================================
+
+package "UI Components" <<Rectangle>> #E3F2FD {
+  
+  class CanvasView {
+    - tool_manager: ToolManager
+    ==
+    + mousePressEvent(event)
+    + mouseMoveEvent(event)
+    + mouseReleaseEvent(event)
+    --
+    Forwards mouse events to active tool
+  }
+
+  class ToolManager {
+    - tools: List[BaseTool]
+    - current_tool: BaseTool
+    - tool_selection_callback: Callable
+    ==
+    + register_tool(tool)
+    + select_tool(tool_name)
+    + get_current_tool(): BaseTool
+    + get_tools(): List
+    + update_tool_actions(selected)
+  }
+
+  class FilterManager {
+    - filters: List[BaseFilter]
+    - current_filter: BaseFilter
+    - expanded: bool
+    - filter_selection_callback: Callable
+    ==
+    + register_filter(filter)
+    + select_filter(filter_name)
+    + get_filters(): List
+    + toggle_expanded(): bool
+  }
+
+  class ColorPickerWidget {
+    - current_color: QColor
+    - color_change_callback: Callable
+    ==
+    + choose_color()
+    + set_color_change_callback(cb)
+    + auto_show_for_tool(tool_name)
+  }
+}
+
+' ============================================================
+' TOOL BASE CLASS
+' ============================================================
+
+package "Tools System" <<Rectangle>> #FFF3E0 {
+  
+  abstract class BaseTool {
+    # name: str
+    # icon_path: str
+    # _action: QAction
+    # _settings_widget: QWidget
+    ==
+    + {abstract} create_action(): QAction
+    + {abstract} create_settings_panel(): QWidget
+    + {abstract} get_tool_name(): str
+    --
+    + get_action(): QAction
+    + get_settings_widget(): QWidget
+    + needs_color(): bool
+    + on_tool_selected()
+    + on_tool_deselected()
+    --
+    + mouse_press_event(event, scene)
+    + mouse_move_event(event, scene)
+    + mouse_release_event(event, scene)
+  }
+}
+
+' ============================================================
+' CONCRETE TOOLS (Mouse-Driven)
+' ============================================================
+
+package "Concrete Tools" <<Rectangle>> #C8E6C9 {
+  
+  class BrushTool {
+    - tool_type: str ["paintbrush", "airbrush"]
+    - color_callback: Callable
+    - current_color: QColor
+    - size_spin: QSpinBox
+    - opacity_slider: QSlider
+    - hardness_slider: QSlider
+    - color_button: QPushButton
+    ==
+    + create_action(): QAction
+    + create_settings_panel(): QWidget
+    + get_tool_name(): str
+    + needs_color(): bool
+    + update_color_display(color)
+    --
+    + mouse_press_event(event, scene)
+    + mouse_move_event(event, scene)
+    + mouse_release_event(event, scene)
+    --
+    Mouse-driven, currently prints debug
+    NO actual pixel modification yet
+  }
+
+  class EraserTool {
+    - size_spin: QSpinBox
+    ==
+    + mouse_press_event(event, scene)
+    + mouse_move_event(event, scene)
+    + mouse_release_event(event, scene)
+    --
+    Mouse-driven tool
+  }
+
+  class SelectionTool {
+    - mode_combo: QComboBox ["Rectangle", "Ellipse", "Lasso"]
+    - feather_slider: QSlider
+    ==
+    + mouse_press_event(event, scene)
+    + mouse_move_event(event, scene)
+    + mouse_release_event(event, scene)
+    --
+    Mouse-driven selection
+  }
+
+  class ShapeTool {
+    - shape_type: str ["rectangle", "circle", "line"]
+    - color_callback: Callable
+    - current_color: QColor
+    - fill_checkbox: QCheckBox
+    - stroke_width: QSpinBox
+    ==
+    + needs_color(): bool
+    + mouse_press_event(event, scene)
+    + mouse_move_event(event, scene)
+    + mouse_release_event(event, scene)
+    --
+    Mouse-driven shape drawing
+  }
+
+  class TextTool {
+    - color_callback: Callable
+    - current_color: QColor
+    - font_combo: QFontComboBox
+    - size_spin: QSpinBox
+    ==
+    + needs_color(): bool
+    + mouse_press_event(event, scene)
+    --
+    Click to add text
+  }
+
+  class BucketTool {
+    - color_callback: Callable
+    - current_color: QColor
+    - tolerance_slider: QSlider
+    ==
+    + needs_color(): bool
+    + mouse_press_event(event, scene)
+    --
+    Click to fill
+  }
+
+  class ColorPickerTool {
+    ==
+    + mouse_press_event(event, scene)
+    --
+    Click to pick color from canvas
+  }
+}
+
+' ============================================================
+' FILTER BASE CLASS
+' ============================================================
+
+package "Filters System" <<Rectangle>> #F3E5F5 {
+  
+  abstract class BaseFilter {
+    # name: str
+    # icon_path: str
+    # _action: QAction
+    # _settings_widget: QWidget
+    ==
+    + {abstract} create_action(): QAction
+    + {abstract} create_settings_panel(): QWidget
+    + {abstract} get_filter_name(): str
+    + {abstract} apply_filter(image)
+    --
+    + get_action(): QAction
+    + get_settings_widget(): QWidget
+  }
+}
+
+' ============================================================
+' CONCRETE FILTERS (Parameter-Driven)
+' ============================================================
+
+package "Concrete Filters" <<Rectangle>> #FFE0B2 {
+  
+  class BlurFilter {
+    - blur_type_combo: QComboBox
+    - radius_slider: QSlider
+    ==
+    + create_settings_panel(): QWidget
+    + apply_filter(image)
+    --
+    Types: Gaussian, Motion, Box
+    NOT YET IMPLEMENTED
+  }
+
+  class SharpenFilter {
+    - amount_slider: QSlider
+    ==
+    + create_settings_panel(): QWidget
+    + apply_filter(image)
+    --
+    NOT YET IMPLEMENTED
+  }
+
+  class BrightnessContrastFilter {
+    - brightness_slider: QSlider
+    - contrast_slider: QSlider
+    ==
+    + create_settings_panel(): QWidget
+    + apply_filter(image)
+    --
+    NOT YET IMPLEMENTED
+  }
+
+  class HueSaturationFilter {
+    - hue_slider: QSlider
+    - saturation_slider: QSlider
+    - lightness_slider: QSlider
+    ==
+    + create_settings_panel(): QWidget
+    + apply_filter(image)
+    --
+    NOT YET IMPLEMENTED
+  }
+
+  class InvertFilter {
+    ==
+    + create_settings_panel(): QWidget
+    + apply_filter(image)
+    --
+    Immediate filter
+    NOT YET IMPLEMENTED
+  }
+
+  class GrayscaleFilter {
+    ==
+    + create_settings_panel(): QWidget
+    + apply_filter(image)
+    --
+    Immediate filter
+    NOT YET IMPLEMENTED
+  }
+}
+
+' ============================================================
+' PYQT5 FRAMEWORK
+' ============================================================
+
+package "PyQt5 Framework" <<Rectangle>> #D1C4E9 {
+  
+  class QMainWindow {
+    + setCentralWidget()
+    + addToolBar()
+    + addDockWidget()
+    + menuBar()
+  }
+
+  class QGraphicsView {
+    + scene(): QGraphicsScene
+    + mousePressEvent()
+    + mouseMoveEvent()
+    + mouseReleaseEvent()
+  }
+
+  class QGraphicsScene {
+    + addItem()
+    + removeItem()
+    + items()
+  }
+}
+
+' ============================================================
+' RELATIONSHIPS
+' ============================================================
+
+' Main app relationships
+ImageEditor --|> QMainWindow
+ImageEditor *-- ToolManager
+ImageEditor *-- FilterManager
+ImageEditor *-- CanvasView
+ImageEditor *-- ColorPickerWidget
+ImageEditor --> QGraphicsScene
+
+' UI relationships
+CanvasView --|> QGraphicsView
+CanvasView --> ToolManager
+CanvasView --> QGraphicsScene
+ToolManager o-- "many" BaseTool
+FilterManager o-- "many" BaseFilter
+
+' Tool inheritance
+BaseTool <|-- BrushTool
+BaseTool <|-- EraserTool
+BaseTool <|-- SelectionTool
+BaseTool <|-- ShapeTool
+BaseTool <|-- TextTool
+BaseTool <|-- BucketTool
+BaseTool <|-- ColorPickerTool
+
+' Filter inheritance
+BaseFilter <|-- BlurFilter
+BaseFilter <|-- SharpenFilter
+BaseFilter <|-- BrightnessContrastFilter
+BaseFilter <|-- HueSaturationFilter
+BaseFilter <|-- InvertFilter
+BaseFilter <|-- GrayscaleFilter
+
+' ============================================================
+' NOTES - CURRENT STATE
+' ============================================================
+
+note top of ImageEditor
+  **Main Application Window:**
+  
+  • Sets up Qt UI (toolbars, docks, menus)
+  • Coordinates tools and filters
+  • Manages color selection
+  • NO document/layer management yet
+  • NO undo/redo yet
+end note
+
+note right of ToolManager
+  **Tool Management:**
+  
+  • Registers all tools
+  • Tracks active tool
+  • Forwards mouse events from canvas
+  • Updates UI when tool changes
+  
+  Simple registry pattern
+end note
+
+note left of BaseTool
+  **Mouse-Driven Tools:**
+  
+  ALL tools respond to:
+  • mouse_press_event
+  • mouse_move_event
+  • mouse_release_event
+  
+  Tools create their own
+  settings panels with
+  QWidget controls.
+  
+  Currently most tools just
+  print debug messages.
+end note
+
+note right of BaseFilter
+  **Parameter-Driven Filters:**
+  
+  Filters have:
+  • Settings panel with sliders
+  • Apply button
+  • apply_filter() method
+  
+  Currently NOT implemented -
+  apply_filter() is empty.
+end note
+
+note bottom of CanvasView
+  **Event Flow:**
+  
+  User clicks/drags on canvas
+      ↓
+  CanvasView.mousePressEvent()
+      ↓
+  ToolManager.get_current_tool()
+      ↓
+  Tool.mouse_press_event()
+      ↓
+  Tool does its work (currently debug prints)
+  
+  NO command pattern yet
+  NO undo/redo yet
+  NO actual pixel modification yet
+end note
+
+note as MissingFeatures
+  **MISSING FEATURES (Not Yet Implemented):**
+  
+  ❌ Document/Layer system
+  ❌ Command pattern (undo/redo)
+  ❌ Actual pixel manipulation
+  ❌ Image loading/saving
+  ❌ Selection system
+  ❌ Filter implementations
+  ❌ Clipboard operations
+  
+  **WHAT WORKS:**
+  
+  ✅ Application UI layout
+  ✅ Tool registration and selection
+  ✅ Filter registration
+  ✅ Mouse event forwarding
+  ✅ Color picker widget
+  ✅ Settings panels for tools/filters
+  ✅ Tool/filter switching
+  
+  **ARCHITECTURE:**
+  
+  Current: Simple tool registry pattern
+  Future: Needs Command pattern + Document model
+end note
+
+@enduml

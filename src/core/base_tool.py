@@ -37,14 +37,14 @@ class BaseTool(ABC):
     def on_tool_deselected(self):
         pass
 
-    def mouse_press_event(self, event, scene):
+    def mouse_press_event(self, event, scene, view=None):
         """Called when mouse is pressed on canvas"""
         pass
 
-    def mouse_move_event(self, event, scene):
+    def mouse_move_event(self, event, scene, view=None):
         """Called when mouse is moved on canvas"""
         pass
 
-    def mouse_release_event(self, event, scene):
+    def mouse_release_event(self, event, scene, view=None):
         """Called when mouse is released on canvas"""
         pass

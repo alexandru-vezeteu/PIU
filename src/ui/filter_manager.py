@@ -35,6 +35,13 @@ class FilterManager:
     def toggle_expanded(self):
         self.filters_expanded = not self.filters_expanded
         return self.filters_expanded
+    
+    def get_filter_by_name(self, filter_name):
+        """Get a filter by its name."""
+        for filter_obj in self.filters:
+            if filter_obj.get_filter_name() == filter_name:
+                return filter_obj
+        return None
 
     def is_expanded(self):
         return self.filters_expanded

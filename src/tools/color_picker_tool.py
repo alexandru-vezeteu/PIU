@@ -32,7 +32,7 @@ class ColorPickerTool(BaseTool):
         print(f"[Eyedropper] Picking color at ({pos.x()}, {pos.y()})")
 
     def mouse_move_event(self, event, scene):
-        pass  # Eyedropper doesn't need move events
+        pass
 
     def mouse_release_event(self, event, scene):
-        pass  # Eyedropper doesn't need release events
+        pass

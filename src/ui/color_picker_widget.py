@@ -111,7 +111,7 @@ class ColorPickerWidget(QWidget):
     def toggle_visibility(self):
         self.visible = not self.visible
         self.content_widget.setVisible(self.visible)
-        self.toggle_btn.setText("▼ Hide" if self.visible else "▶ Show")
+        self.toggle_btn.setText("Hide" if self.visible else "Show")
 
     def auto_show_for_tool(self, tool_name):
         color_tools = ["paintbrush", "airbrush", "paint_bucket", "rectangle", "circle", "line", "text"]

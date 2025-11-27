@@ -1,4 +1,5 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, QAction)
+from PyQt5.QtGui import QImage
 from src.core.base_filter import BaseFilter
 
 
@@ -15,13 +16,13 @@ class InvertFilter(BaseFilter):
         filter_widget = QWidget()
         layout = QVBoxLayout(filter_widget)
 
-        info_label = QLabel("This filter inverts all colors in the image.\nNo additional settings required.")
+        info_label = QLabel("Inverts all colors in the image.")
         info_label.setWordWrap(True)
-
-        apply_btn = QPushButton("Apply Filter")
+        
+        self.apply_btn = QPushButton("Apply Invert Filter")
 
         layout.addWidget(info_label)
-        layout.addWidget(apply_btn)
+        layout.addWidget(self.apply_btn)
         layout.addStretch()
 
         self._settings_widget = filter_widget
@@ -30,5 +31,10 @@ class InvertFilter(BaseFilter):
     def get_filter_name(self) -> str:
         return "invert"
 
-    def apply_filter(self, image):
-        pass
+    def apply_filter(self, image: QImage) -> QImage:
+        """Apply invert filter to the image."""
+        result = image.copy()
+        
+        result.invertPixels()
+        
+        return result

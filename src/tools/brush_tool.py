@@ -26,20 +26,6 @@ class BrushTool(BaseTool):
         brush_widget = QWidget()
         layout = QVBoxLayout(brush_widget)
 
-        color_group = QGroupBox("Color")
-        color_layout = QVBoxLayout()
-        self.color_button = QPushButton()
-        self.color_button.setFixedSize(100, 30)
-        if self.current_color:
-            self.color_button.setStyleSheet(
-                f"QPushButton {{ background-color: {self.current_color.name()}; border: 2px solid #666; }}"
-            )
-        if self.color_callback:
-            self.color_button.clicked.connect(self.color_callback)
-        color_layout.addWidget(QLabel("Current Color:"))
-        color_layout.addWidget(self.color_button)
-        color_group.setLayout(color_layout)
-
         size_label = QLabel("Brush Size: 5")
         self.size_spin = QSpinBox()
         self.size_spin.setRange(1, 100)
@@ -58,7 +44,6 @@ class BrushTool(BaseTool):
         self.hardness_slider.setValue(100)
         self.hardness_slider.valueChanged.connect(lambda val: hardness_label.setText(f"Hardness: {val}%"))
 
-        layout.addWidget(color_group)
         layout.addWidget(QLabel("Size:"))
         layout.addWidget(size_label)
         layout.addWidget(self.size_spin)
@@ -77,23 +62,69 @@ class BrushTool(BaseTool):
     def needs_color(self) -> bool:
         return True
 
-    def update_color_display(self, color):
-        if hasattr(self, 'color_button'):
-            self.color_button.setStyleSheet(
-                f"QPushButton {{ background-color: {color.name()}; border: 2px solid #666; }}"
-            )
-            self.color_button.update()
-
-    def mouse_press_event(self, event, scene):
-        pos = event.pos()
+    def mouse_press_event(self, event, scene, view=None):
+        """Start a new stroke."""
+        from PyQt5.QtWidgets import QGraphicsPathItem
+        from PyQt5.QtGui import QPainterPath, QPen
+        from PyQt5.QtCore import Qt
+        
+        if view:
+            pos = view.mapToScene(event.pos())
+        else:
+            pos = event.pos()
+        
         size = self.size_spin.value()
-        opacity = self.opacity_slider.value()
-        print(f"[{self.tool_type.capitalize()}] Mouse pressed at ({pos.x()}, {pos.y()}) - Size: {size}, Opacity: {opacity}%")
+        opacity = self.opacity_slider.value() / 100.0
+        
+        self.current_path = QPainterPath()
+        self.current_path.moveTo(pos)
+        
+        pen = QPen(self.current_color if hasattr(self, 'current_color') else Qt.black)
+        pen.setWidth(size)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        
+        self.current_item = QGraphicsPathItem(self.current_path)
+        self.current_item.setPen(pen)
+        self.current_item.setOpacity(opacity)
+        
+        scene.addItem(self.current_item)
+        
+        print(f"[{self.tool_type.capitalize()}] Started stroke at ({pos.x():.1f}, {pos.y():.1f})")
 
-    def mouse_move_event(self, event, scene):
-        pos = event.pos()
-        print(f"[{self.tool_type.capitalize()}] Painting at ({pos.x()}, {pos.y()})")
+    def mouse_move_event(self, event, scene, view=None):
+        """Continue the stroke."""
+        if hasattr(self, 'current_item') and self.current_item:
+            if view:
+                pos = view.mapToScene(event.pos())
+            else:
+                pos = event.pos()
+            
+            self.current_path.lineTo(pos)
+            self.current_item.setPath(self.current_path)
 
-    def mouse_release_event(self, event, scene):
-        pos = event.pos()
-        print(f"[{self.tool_type.capitalize()}] Mouse released at ({pos.x()}, {pos.y()})")
+    def mouse_release_event(self, event, scene, view=None):
+        """Finish the stroke and create a command."""
+        from src.commands.draw_command import DrawCommand
+        
+        if view:
+            pos = view.mapToScene(event.pos())
+        else:
+            pos = event.pos()
+        
+        print(f"[{self.tool_type.capitalize()}] Finished stroke at ({pos.x():.1f}, {pos.y():.1f})")
+        
+        if hasattr(self, 'current_item') and self.current_item:
+            scene.removeItem(self.current_item)
+            
+            command = DrawCommand(
+                self.current_item,
+                f"{self.tool_type.capitalize()} Stroke"
+            )
+            
+            self.current_item = None
+            self.current_path = None
+            
+            return command
+        
+        return None

@@ -71,7 +71,7 @@ class TextTool(BaseTool):
         print(f"[Text] Clicked at ({pos.x()}, {pos.y()}) - Font: {font}, Size: {size}")
 
     def mouse_move_event(self, event, scene):
-        pass  # Text tool doesn't need move events
+        pass
 
     def mouse_release_event(self, event, scene):
-        pass  # Text tool doesn't need release events
+        pass

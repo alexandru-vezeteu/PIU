@@ -66,7 +66,7 @@ class BucketTool(BaseTool):
         print(f"[Paint Bucket] Clicked at ({pos.x()}, {pos.y()}) - Tolerance: {tolerance}")
 
     def mouse_move_event(self, event, scene):
-        pass  # Bucket tool doesn't need move events
+        pass
 
     def mouse_release_event(self, event, scene):
-        pass  # Bucket tool doesn't need release events
+        pass

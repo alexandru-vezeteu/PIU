@@ -1,9 +1,10 @@
 from PyQt5.QtWidgets import (QMainWindow, QGraphicsView, QGraphicsScene,
                              QToolBar, QDockWidget, QWidget, QVBoxLayout,
-                             QStackedWidget, QAction, QMenu)
+                             QStackedWidget, QAction, QMenu, QFileDialog, QMessageBox)
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPainter, QIcon, QColor
+from PyQt5.QtGui import QPainter, QIcon, QColor, QKeySequence, QPixmap, QImage
 
+from src.core.document import Document
 from src.ui.tool_manager import ToolManager
 from src.ui.filter_manager import FilterManager
 from src.ui.color_picker_widget import ColorPickerWidget
@@ -16,6 +17,7 @@ from src.tools.text_tool import TextTool
 from src.tools.bucket_tool import BucketTool
 from src.tools.selection_tool import SelectionTool
 from src.tools.color_picker_tool import ColorPickerTool
+from src.tools.zoom_tool import ZoomTool
 
 from src.filters.brightness_contrast_filter import BrightnessContrastFilter
 from src.filters.blur_filter import BlurFilter
@@ -32,6 +34,7 @@ class ImageEditor(QMainWindow):
         self.setGeometry(100, 100, 1200, 800)
 
         self.current_color = QColor(0, 0, 0)
+        self.document = Document()
         self.tool_manager = ToolManager()
         self.filter_manager = FilterManager()
 
@@ -44,8 +47,7 @@ class ImageEditor(QMainWindow):
         self.tool_manager.select_tool("paintbrush")
 
     def setup_central_widget(self):
-        self.scene = QGraphicsScene()
-        self.view = CanvasView(self.scene, self.tool_manager)
+        self.view = CanvasView(self.document, self.tool_manager)
         self.setCentralWidget(self.view)
 
     def setup_tools(self):
@@ -60,6 +62,7 @@ class ImageEditor(QMainWindow):
             ShapeTool("line", self.choose_color, self.current_color),
             TextTool(self.choose_color, self.current_color),
             ColorPickerTool(),
+            ZoomTool(self)
         ]
 
         for tool in tools:
@@ -194,6 +197,23 @@ class ImageEditor(QMainWindow):
         self.right_dock_button.setChecked(True)
         self.right_dock_button.triggered.connect(self.toggle_right_dock_visibility)
         self.top_toolbar.addAction(self.right_dock_button)
+        
+        self.top_toolbar.addSeparator()
+        
+        zoom_in_btn = QAction("Zoom +", self)
+        zoom_in_btn.triggered.connect(self.zoom_in)
+        zoom_in_btn.setToolTip("Zoom In (Ctrl++)")
+        self.top_toolbar.addAction(zoom_in_btn)
+        
+        zoom_out_btn = QAction("Zoom -", self)
+        zoom_out_btn.triggered.connect(self.zoom_out)
+        zoom_out_btn.setToolTip("Zoom Out (Ctrl+-)")
+        self.top_toolbar.addAction(zoom_out_btn)
+        
+        zoom_fit_btn = QAction("Fit", self)
+        zoom_fit_btn.triggered.connect(self.fit_to_window)
+        zoom_fit_btn.setToolTip("Fit to Window (Ctrl+F)")
+        self.top_toolbar.addAction(zoom_fit_btn)
 
         self.left_toolbar.visibilityChanged.connect(self.sync_left_toolbar_button)
         self.right_dock.visibilityChanged.connect(self.sync_right_dock_button)
@@ -214,22 +234,76 @@ class ImageEditor(QMainWindow):
         menubar = self.menuBar()
 
         file_menu = menubar.addMenu("File")
-        file_menu.addAction("New")
-        file_menu.addAction("Open...")
-        file_menu.addAction("Save")
-        file_menu.addAction("Save As...")
+        
+        new_action = QAction("New", self)
+        new_action.setShortcut(QKeySequence.New)
+        new_action.triggered.connect(self.new_document)
+        file_menu.addAction(new_action)
+        
+        open_action = QAction("Open...", self)
+        open_action.setShortcut(QKeySequence.Open)
+        open_action.triggered.connect(self.open_document)
+        file_menu.addAction(open_action)
+        
+        save_action = QAction("Save", self)
+        save_action.setShortcut(QKeySequence.Save)
+        save_action.triggered.connect(self.save_document)
+        file_menu.addAction(save_action)
+        
+        save_as_action = QAction("Save As...", self)
+        save_as_action.setShortcut(QKeySequence.SaveAs)
+        save_as_action.triggered.connect(self.save_document_as)
+        file_menu.addAction(save_as_action)
+        
         file_menu.addSeparator()
-        file_menu.addAction("Exit")
+        
+        exit_action = QAction("Exit", self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
 
         edit_menu = menubar.addMenu("Edit")
-        edit_menu.addAction("Undo")
-        edit_menu.addAction("Redo")
+        
+        self.undo_action = QAction("Undo", self)
+        self.undo_action.setShortcut(QKeySequence.Undo)
+        self.undo_action.triggered.connect(self.perform_undo)
+        edit_menu.addAction(self.undo_action)
+        
+        self.redo_action = QAction("Redo", self)
+        self.redo_action.setShortcut(QKeySequence.Redo) 
+        self.redo_action.triggered.connect(self.perform_redo)
+        edit_menu.addAction(self.redo_action)
+        
         edit_menu.addSeparator()
         edit_menu.addAction("Cut")
         edit_menu.addAction("Copy")
         edit_menu.addAction("Paste")
+        
+        self.update_undo_redo_states()
 
         view_menu = menubar.addMenu("View")
+        
+        zoom_in_action = QAction("Zoom In", self)
+        zoom_in_action.setShortcut(QKeySequence.ZoomIn)
+        zoom_in_action.triggered.connect(self.zoom_in)
+        view_menu.addAction(zoom_in_action)
+        
+        zoom_out_action = QAction("Zoom Out", self)
+        zoom_out_action.setShortcut(QKeySequence.ZoomOut)
+        zoom_out_action.triggered.connect(self.zoom_out)
+        view_menu.addAction(zoom_out_action)
+        
+        zoom_reset_action = QAction("Reset Zoom", self)
+        zoom_reset_action.setShortcut("Ctrl+0")
+        zoom_reset_action.triggered.connect(self.zoom_reset)
+        view_menu.addAction(zoom_reset_action)
+        
+        fit_to_window_action = QAction("Fit to Window", self)
+        fit_to_window_action.setShortcut("Ctrl+F")
+        fit_to_window_action.triggered.connect(self.fit_to_window)
+        view_menu.addAction(fit_to_window_action)
+        
+        view_menu.addSeparator()
+        
         toggle_left_toolbar_action = self.left_toolbar.toggleViewAction()
         toggle_left_toolbar_action.setText("Toggle Tools Panel")
         view_menu.addAction(toggle_left_toolbar_action)
@@ -241,6 +315,36 @@ class ImageEditor(QMainWindow):
         toggle_top_toolbar_action = self.top_toolbar.toggleViewAction()
         toggle_top_toolbar_action.setText("Toggle Panel Buttons")
         view_menu.addAction(toggle_top_toolbar_action)
+    
+    def perform_undo(self):
+        """Perform undo operation."""
+        if self.document.undo():
+            self.update_undo_redo_states()
+            self.view.viewport().update()
+    
+    def perform_redo(self):
+        """Perform redo operation."""
+        if self.document.redo():
+            self.update_undo_redo_states()
+            self.view.viewport().update()
+    
+    def update_undo_redo_states(self):
+        """Update undo/redo menu item states and text."""
+        if self.document.can_undo():
+            self.undo_action.setEnabled(True)
+            undo_name = self.document.get_undo_name()
+            self.undo_action.setText(f"Undo {undo_name}" if undo_name else "Undo")
+        else:
+            self.undo_action.setEnabled(False)
+            self.undo_action.setText("Undo")
+        
+        if self.document.can_redo():
+            self.redo_action.setEnabled(True)
+            redo_name = self.document.get_redo_name()
+            self.redo_action.setText(f"Redo {redo_name}" if redo_name else "Redo")
+        else:
+            self.redo_action.setEnabled(False)
+            self.redo_action.setText("Redo")
 
     def on_tool_selected(self, tool):
         tool_name = tool.get_tool_name()
@@ -254,11 +358,20 @@ class ImageEditor(QMainWindow):
 
     def on_filter_selected(self, filter_obj):
         filter_name = filter_obj.get_filter_name()
-        if filter_name in self.filter_panel_indices:
-            self.options_stack.setCurrentIndex(self.filter_panel_indices[filter_name])
-
-        for tool in self.tool_manager.get_tools():
-            tool.get_action().setChecked(False)
+        print(f"[Filter] Selected: {filter_name}")
+        
+        settings_widget = filter_obj.get_settings_widget()
+        if settings_widget:
+            self.options_stack.addWidget(settings_widget)
+            self.options_stack.setCurrentWidget(settings_widget)
+        
+        if filter_name == "invert" and hasattr(filter_obj, 'apply_btn'):
+            try:
+                filter_obj.apply_btn.clicked.disconnect()
+            except:
+                pass
+            filter_obj.apply_btn.clicked.connect(lambda: self.apply_filter_to_canvas(filter_obj))
+            print(f"[Filter] Connected {filter_name} apply button")
 
     def choose_color(self):
         self.color_picker_widget.choose_color()
@@ -268,3 +381,117 @@ class ImageEditor(QMainWindow):
         for tool in self.tool_manager.get_tools():
             if tool.needs_color() and hasattr(tool, 'update_color_display'):
                 tool.update_color_display(color)
+    
+    def apply_filter_to_canvas(self, filter_obj):
+        """Apply a filter to the canvas with undo/redo support."""
+        from src.commands.filter_command import FilterCommand
+        
+        print(f"[Filter] Applying {filter_obj.name} filter...")
+        
+        command = FilterCommand(
+            self.document.scene,
+            filter_obj.apply_filter,
+            filter_obj.name
+        )
+        
+        print(f"[Filter] FilterCommand created, executing...")
+        
+        self.document.execute_command(command)
+        self.update_undo_redo_states()
+        self.view.viewport().update()
+        
+        print(f"[Filter] {filter_obj.name} filter applied successfully!")
+    
+    def new_document(self):
+        """Create a new blank document."""
+        reply = QMessageBox.question(self, 'New Document',
+                                    'Create a new document? Unsaved changes will be lost.',
+                                    QMessageBox.Yes | QMessageBox.No,
+                                    QMessageBox.No)
+        
+        if reply == QMessageBox.Yes:
+            self.document.scene.clear()
+            self.document.clear_history()
+            self.update_undo_redo_states()
+            self.view.viewport().update()
+    
+    def open_document(self):
+        """Open an image file."""
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Image",
+            "",
+            "Image Files (*.png *.jpg *.jpeg *.bmp);;All Files (*)"
+        )
+        
+        if filename:
+            pixmap = QPixmap(filename)
+            if not pixmap.isNull():
+                self.document.scene.clear()
+                
+                self.document.scene.setSceneRect(0, 0, pixmap.width(), pixmap.height())
+                self.document.width = pixmap.width()
+                self.document.height = pixmap.height()
+                
+                self.document.scene.addPixmap(pixmap)
+                
+                self.view.setSceneRect(self.document.scene.sceneRect())
+                
+                self.fit_to_window()
+                
+                self.document.clear_history()
+                self.update_undo_redo_states()
+                self.view.viewport().update()
+            else:
+                QMessageBox.warning(self, "Error", "Failed to load image.")
+    
+    def save_document(self):
+        """Save the document (if no filename, prompt for one)."""
+        if hasattr(self, 'current_filename') and self.current_filename:
+            self._save_to_file(self.current_filename)
+        else:
+            self.save_document_as()
+    
+    def save_document_as(self):
+        """Save the document with a new filename."""
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Image",
+            "",
+            "PNG Image (*.png);;JPEG Image (*.jpg);;All Files (*)"
+        )
+        
+        if filename:
+            self._save_to_file(filename)
+            self.current_filename = filename
+    
+    def _save_to_file(self, filename):
+        """Save the scene to an image file."""
+        rect = self.document.scene.sceneRect()
+        image = QImage(int(rect.width()), int(rect.height()), QImage.Format_ARGB32)
+        image.fill(0xFFFFFFFF)
+        
+        painter = QPainter(image)
+        self.document.scene.render(painter)
+        painter.end()
+        
+        if image.save(filename):
+            QMessageBox.information(self, "Success", f"Image saved to {filename}")
+        else:
+            QMessageBox.warning(self, "Error", "Failed to save image.")
+    
+    def zoom_in(self):
+        """Zoom in by 25%."""
+        self.view.scale(1.25, 1.25)
+    
+    def zoom_out(self):
+        """Zoom out by 25%."""
+        self.view.scale(0.8, 0.8)
+    
+    def zoom_reset(self):
+        """Reset zoom to 100%."""
+        self.view.resetTransform()
+    
+    def fit_to_window(self):
+        """Fit the entire scene to the window."""
+        self.view.fitInView(self.document.scene.sceneRect(), Qt.KeepAspectRatio)
