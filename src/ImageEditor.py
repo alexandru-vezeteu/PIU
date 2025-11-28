@@ -425,7 +425,7 @@ class ImageEditor(QMainWindow):
             self.document.scene.addItem(self.document.checkerboard_item)
             
             self.document.canvas_image = QImage(int(self.document.width), int(self.document.height), QImage.Format_ARGB32)
-            self.document.canvas_image.fill(0x00000000)  # Transparent
+            self.document.canvas_image.fill(0x00000000)
             
             self.document.canvas_pixmap_item = QGraphicsPixmapItem(QPixmap.fromImage(self.document.canvas_image))
             self.document.canvas_pixmap_item.setData(0, 'canvas')
@@ -453,7 +453,23 @@ class ImageEditor(QMainWindow):
                 self.document.width = pixmap.width()
                 self.document.height = pixmap.height()
                 
-                self.document.scene.addPixmap(pixmap)
+                checkerboard = self.document._create_checkerboard(pixmap.width(), pixmap.height())
+                self.document.checkerboard_item = QGraphicsPixmapItem(checkerboard)
+                self.document.checkerboard_item.setData(0, 'checkerboard')
+                self.document.checkerboard_item.setZValue(-2)
+                self.document.scene.addItem(self.document.checkerboard_item)
+                
+                background_item = QGraphicsPixmapItem(pixmap)
+                background_item.setData(0, 'background')
+                background_item.setZValue(-1)
+                self.document.scene.addItem(background_item)
+                
+                self.document.canvas_image = QImage(pixmap.width(), pixmap.height(), QImage.Format_ARGB32)
+                self.document.canvas_image.fill(0x00000000)
+                self.document.canvas_pixmap_item = QGraphicsPixmapItem(QPixmap.fromImage(self.document.canvas_image))
+                self.document.canvas_pixmap_item.setData(0, 'canvas')
+                self.document.canvas_pixmap_item.setZValue(0)
+                self.document.scene.addItem(self.document.canvas_pixmap_item)
                 
                 self.view.setSceneRect(self.document.scene.sceneRect())
                 

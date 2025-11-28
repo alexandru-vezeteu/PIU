@@ -27,15 +27,32 @@ class FilterCommand(ICommand):
         self.filter_func = filter_func
         
         self.canvas_item = None
+        self.background_item = None
+        
         for item in scene.items():
-            if isinstance(item, QGraphicsPixmapItem) and item.data(0) == 'canvas':
-                self.canvas_item = item
-                break
+            if isinstance(item, QGraphicsPixmapItem):
+                if item.data(0) == 'canvas':
+                    self.canvas_item = item
+                elif item.data(0) == 'background':
+                    self.background_item = item
         
         if not self.canvas_item:
             raise ValueError("Canvas item not found in scene")
         
-        self.before_image = self.canvas_item.pixmap().toImage()
+        canvas_image = self.canvas_item.pixmap().toImage()
+        
+        if self.background_item:
+            from PyQt5.QtGui import QPainter
+            background_image = self.background_item.pixmap().toImage()
+            
+            merged = background_image.copy()
+            painter = QPainter(merged)
+            painter.drawImage(0, 0, canvas_image)
+            painter.end()
+            
+            self.before_image = merged
+        else:
+            self.before_image = canvas_image
         
         self.after_image = filter_func(self.before_image.copy())
     

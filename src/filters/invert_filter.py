@@ -32,9 +32,7 @@ class InvertFilter(BaseFilter):
         return "invert"
 
     def apply_filter(self, image: QImage) -> QImage:
-        """Apply invert filter to the image."""
+        """Apply invert filter to the image, preserving transparency."""
         result = image.copy()
-        
-        result.invertPixels()
-        
+        result.invertPixels(QImage.InvertRgb)
         return result

@@ -80,7 +80,9 @@ class EraserTool(BaseTool):
         
         size = self.size_spin.value()
         
-        pen = QPen(QColor(255, 255, 255))
+        painter.setCompositionMode(QPainter.CompositionMode_Clear)
+        
+        pen = QPen(Qt.black)
         pen.setWidth(size)
         pen.setCapStyle(Qt.RoundCap)
         pen.setJoinStyle(Qt.RoundJoin)
