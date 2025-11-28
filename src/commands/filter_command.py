@@ -25,42 +25,38 @@ class FilterCommand(ICommand):
         """
         self.filter_name = filter_name
         self.filter_func = filter_func
-        self.canvas_rect = canvas_rect
         
-        self.before_image = self._capture_scene(scene)
+        self.canvas_item = None
+        for item in scene.items():
+            if isinstance(item, QGraphicsPixmapItem) and item.data(0) == 'canvas':
+                self.canvas_item = item
+                break
+        
+        if not self.canvas_item:
+            raise ValueError("Canvas item not found in scene")
+        
+        self.before_image = self.canvas_item.pixmap().toImage()
         
         self.after_image = filter_func(self.before_image.copy())
-        
-    def _capture_scene(self, scene):
-        """Capture the current scene as a QImage."""
-        if self.canvas_rect:
-            rect = self.canvas_rect
-        else:
-            rect = scene.sceneRect()
-            
-        image = QImage(int(rect.width()), int(rect.height()), QImage.Format_ARGB32)
-        image.fill(0xFFFFFFFF) 
-        
-        painter = QPainter(image)
-        scene.render(painter, QRectF(), rect)
-        painter.end()
-        
-        return image
     
-    def _apply_image_to_scene(self, scene, image):
-        """Replace scene contents with the given image."""
-        scene.clear()
+    def _apply_image_to_canvas(self, scene, image):
+        """Replace only the canvas pixmap with the given image."""
+        canvas_item = None
+        for item in scene.items():
+            if isinstance(item, QGraphicsPixmapItem) and item.data(0) == 'canvas':
+                canvas_item = item
+                break
         
-        pixmap = QPixmap.fromImage(image)
-        scene.addPixmap(pixmap)
+        if canvas_item:
+            canvas_item.setPixmap(QPixmap.fromImage(image))
     
     def execute(self, scene):
-        """Apply the filter to the scene."""
-        self._apply_image_to_scene(scene, self.after_image)
+        """Apply the filter to the canvas."""
+        self._apply_image_to_canvas(scene, self.after_image)
     
     def undo(self, scene):
-        """Restore the scene to before the filter was applied."""
-        self._apply_image_to_scene(scene, self.before_image)
+        """Restore the canvas to before the filter was applied."""
+        self._apply_image_to_canvas(scene, self.before_image)
     
     def get_name(self) -> str:
         """Get command name."""

@@ -24,20 +24,6 @@ class ShapeTool(BaseTool):
         shape_widget = QWidget()
         layout = QVBoxLayout(shape_widget)
 
-        color_group = QGroupBox("Color")
-        color_layout = QVBoxLayout()
-        self.color_button = QPushButton()
-        self.color_button.setFixedSize(100, 30)
-        if self.current_color:
-            self.color_button.setStyleSheet(
-                f"QPushButton {{ background-color: {self.current_color.name()}; border: 2px solid #666; }}"
-            )
-        if self.color_callback:
-            self.color_button.clicked.connect(self.color_callback)
-        color_layout.addWidget(QLabel("Stroke Color:"))
-        color_layout.addWidget(self.color_button)
-        color_group.setLayout(color_layout)
-
         self.fill_combo = QComboBox()
         self.fill_combo.addItems(["Stroke Only", "Fill Only", "Stroke + Fill"])
 
@@ -47,7 +33,6 @@ class ShapeTool(BaseTool):
         self.width_spin.setValue(2)
         self.width_spin.valueChanged.connect(lambda val: width_label.setText(f"Line Width: {val}"))
 
-        layout.addWidget(color_group)
         layout.addWidget(QLabel("Draw Mode:"))
         layout.addWidget(self.fill_combo)
         layout.addWidget(width_label)
@@ -62,13 +47,6 @@ class ShapeTool(BaseTool):
 
     def needs_color(self) -> bool:
         return True
-
-    def update_color_display(self, color):
-        if hasattr(self, 'color_button'):
-            self.color_button.setStyleSheet(
-                f"QPushButton {{ background-color: {color.name()}; border: 2px solid #666; }}"
-            )
-            self.color_button.update()
 
     def mouse_press_event(self, event, scene, view=None):
         pos = event.pos()

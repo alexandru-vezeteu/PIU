@@ -19,27 +19,12 @@ class BucketTool(BaseTool):
         bucket_widget = QWidget()
         layout = QVBoxLayout(bucket_widget)
 
-        color_group = QGroupBox("Color")
-        color_layout = QVBoxLayout()
-        self.color_button = QPushButton()
-        self.color_button.setFixedSize(100, 30)
-        if self.current_color:
-            self.color_button.setStyleSheet(
-                f"QPushButton {{ background-color: {self.current_color.name()}; border: 2px solid #666; }}"
-            )
-        if self.color_callback:
-            self.color_button.clicked.connect(self.color_callback)
-        color_layout.addWidget(QLabel("Fill Color:"))
-        color_layout.addWidget(self.color_button)
-        color_group.setLayout(color_layout)
-
         tolerance_label = QLabel("Tolerance: 30")
         self.tolerance_slider = QSlider(Qt.Horizontal)
         self.tolerance_slider.setRange(0, 100)
         self.tolerance_slider.setValue(30)
         self.tolerance_slider.valueChanged.connect(lambda val: tolerance_label.setText(f"Tolerance: {val}"))
 
-        layout.addWidget(color_group)
         layout.addWidget(tolerance_label)
         layout.addWidget(self.tolerance_slider)
         layout.addStretch()
@@ -52,13 +37,6 @@ class BucketTool(BaseTool):
 
     def needs_color(self) -> bool:
         return True
-
-    def update_color_display(self, color):
-        if hasattr(self, 'color_button'):
-            self.color_button.setStyleSheet(
-                f"QPushButton {{ background-color: {color.name()}; border: 2px solid #666; }}"
-            )
-            self.color_button.update()
 
     def mouse_press_event(self, event, scene, view=None):
         pos = event.pos()

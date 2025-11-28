@@ -1,14 +1,12 @@
 from abc import ABC, abstractmethod
 from PyQt5.QtWidgets import QWidget, QAction
 from PyQt5.QtGui import QIcon
+from src.core.base_action import BaseAction
 
 
-class BaseTool(ABC):
+class BaseTool(BaseAction):
     def __init__(self, name, icon_path=None):
-        self.name = name
-        self.icon_path = icon_path
-        self._action = None
-        self._settings_widget = None
+        super().__init__(name, icon_path)
 
     @abstractmethod
     def create_action(self) -> QAction:
@@ -20,22 +18,30 @@ class BaseTool(ABC):
 
     @abstractmethod
     def get_tool_name(self) -> str:
+        """Return unique identifier for this tool."""
         pass
 
-    def get_action(self) -> QAction:
-        return self._action
-
-    def get_settings_widget(self) -> QWidget:
-        return self._settings_widget
+    def get_action_name(self) -> str:
+        """Alias for get_tool_name to match BaseAction interface."""
+        return self.get_tool_name()
 
     def needs_color(self) -> bool:
         return False
+    
+    def register_bindings(self, bind_func):
+        """
+        Override this to register key+mouse combinations for this tool.
+        Default implementation does nothing.
+        """
+        pass
 
     def on_tool_selected(self):
-        pass
+        """Called when this tool becomes active."""
+        self.on_action_selected()
 
     def on_tool_deselected(self):
-        pass
+        """Called when this tool is no longer active."""
+        self.on_action_deselected()
 
     def mouse_press_event(self, event, scene, view=None):
         """Called when mouse is pressed on canvas"""

@@ -2,9 +2,6 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, QSpinBox,
                              QSlider, QPushButton, QGroupBox, QAction)
 from PyQt5.QtCore import Qt
 from src.core.base_tool import BaseTool
-from PyQt5.QtWidgets import QGraphicsPathItem
-from PyQt5.QtGui import QPainterPath, QPen
-from PyQt5.QtCore import Qt
 
 class BrushTool(BaseTool):
     def __init__(self, tool_type="paintbrush", color_callback=None, current_color=None):
@@ -23,6 +20,12 @@ class BrushTool(BaseTool):
         if self.tool_type == "paintbrush":
             self._action.setChecked(True)
         return self._action
+    
+    def get_key_binding(self) -> str:
+        """Return keyboard shortcut."""
+        if self.tool_type == "paintbrush":
+            return "B"
+        return None
 
     def create_settings_panel(self) -> QWidget:
         brush_widget = QWidget()
@@ -32,7 +35,18 @@ class BrushTool(BaseTool):
         self.size_spin = QSpinBox()
         self.size_spin.setRange(1, 100)
         self.size_spin.setValue(5)
-        self.size_spin.valueChanged.connect(lambda val: size_label.setText(f"Brush Size: {val}"))
+        
+        self.size_slider = QSlider(Qt.Horizontal)
+        self.size_slider.setRange(1, 100)
+        self.size_slider.setValue(5)
+        
+        def update_size(val):
+            size_label.setText(f"Brush Size: {val}")
+            self.size_spin.setValue(val)
+            self.size_slider.setValue(val)
+        
+        self.size_spin.valueChanged.connect(update_size)
+        self.size_slider.valueChanged.connect(update_size)
 
         opacity_label = QLabel("Opacity: 100%")
         self.opacity_slider = QSlider(Qt.Horizontal)
@@ -46,8 +60,8 @@ class BrushTool(BaseTool):
         self.hardness_slider.setValue(100)
         self.hardness_slider.valueChanged.connect(lambda val: hardness_label.setText(f"Hardness: {val}%"))
 
-        layout.addWidget(QLabel("Size:"))
         layout.addWidget(size_label)
+        layout.addWidget(self.size_slider)
         layout.addWidget(self.size_spin)
         layout.addWidget(opacity_label)
         layout.addWidget(self.opacity_slider)
@@ -65,47 +79,71 @@ class BrushTool(BaseTool):
         return True
 
     def mouse_press_event(self, event, scene, view=None):
-        """Start a new stroke."""
-
+        """Start a new stroke - capture initial canvas state."""
         
         if view:
             pos = view.mapToScene(event.pos())
         else:
             pos = event.pos()
         
+        self.view = view
+        
+        self.last_pos = pos
+        
+        self.before_image = None
+        
+        print(f"[{self.tool_type.capitalize()}] Started stroke at ({pos.x():.1f}, {pos.y():.1f})")
+
+    def mouse_move_event(self, event, scene, view=None):
+        """Continue the stroke - draw directly to canvas pixels."""
+        if not hasattr(self, 'last_pos') or self.last_pos is None:
+            return
+            
+        if view:
+            current_pos = view.mapToScene(event.pos())
+        else:
+            current_pos = event.pos()
+        
+        from PyQt5.QtGui import QPainter, QPen, QPixmap
+        
+        canvas_item = None
+        for item in scene.items():
+            if hasattr(item, 'pixmap') and item.data(0) == 'canvas':
+                canvas_item = item
+                break
+        
+        if not canvas_item:
+            return
+        
+        if self.before_image is None:
+            self.before_image = canvas_item.pixmap().toImage().copy()
+        
+        pixmap = canvas_item.pixmap()
+        painter = QPainter(pixmap)
+        
         size = self.size_spin.value()
         opacity = self.opacity_slider.value() / 100.0
-        
-        self.current_path = QPainterPath()
-        self.current_path.moveTo(pos)
         
         pen = QPen(self.current_color if hasattr(self, 'current_color') else Qt.black)
         pen.setWidth(size)
         pen.setCapStyle(Qt.RoundCap)
         pen.setJoinStyle(Qt.RoundJoin)
         
-        self.current_item = QGraphicsPathItem(self.current_path)
-        self.current_item.setPen(pen)
-        self.current_item.setOpacity(opacity)
+        painter.setPen(pen)
+        painter.setOpacity(opacity)
+        painter.setRenderHint(QPainter.Antialiasing)
         
-        scene.addItem(self.current_item)
+        painter.drawLine(self.last_pos, current_pos)
         
-        print(f"[{self.tool_type.capitalize()}] Started stroke at ({pos.x():.1f}, {pos.y():.1f})")
-
-    def mouse_move_event(self, event, scene, view=None):
-        """Continue the stroke."""
-        if hasattr(self, 'current_item') and self.current_item:
-            if view:
-                pos = view.mapToScene(event.pos())
-            else:
-                pos = event.pos()
-            
-            self.current_path.lineTo(pos)
-            self.current_item.setPath(self.current_path)
+        painter.end()
+        
+        canvas_item.setPixmap(pixmap)
+        
+        self.last_pos = current_pos
 
     def mouse_release_event(self, event, scene, view=None):
         """Finish the stroke and create a command."""
-        from src.commands.draw_command import DrawCommand
+        from src.commands.pixel_draw_command import PixelDrawCommand
         
         if view:
             pos = view.mapToScene(event.pos())
@@ -114,17 +152,29 @@ class BrushTool(BaseTool):
         
         print(f"[{self.tool_type.capitalize()}] Finished stroke at ({pos.x():.1f}, {pos.y():.1f})")
         
-        if hasattr(self, 'current_item') and self.current_item:
-            scene.removeItem(self.current_item)
+        if hasattr(self, 'before_image') and self.before_image is not None:
+            canvas_item = None
+            for item in scene.items():
+                if hasattr(item, 'pixmap') and item.data(0) == 'canvas':
+                    canvas_item = item
+                    break
             
-            command = DrawCommand(
-                self.current_item,
-                f"{self.tool_type.capitalize()} Stroke"
-            )
-            
-            self.current_item = None
-            self.current_path = None
-            
-            return command
+            if canvas_item:
+                after_image = canvas_item.pixmap().toImage().copy()
+                
+                command = PixelDrawCommand(
+                    self.before_image,
+                    after_image,
+                    f"{self.tool_type.capitalize()} Stroke"
+                )
+                
+                self.before_image = None
+                self.last_pos = None
+                
+                return command
+        
+        self.before_image = None
+        self.last_pos = None
         
         return None
+

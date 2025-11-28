@@ -27,25 +27,10 @@ class TextTool(BaseTool):
         self.size_spin.setValue(12)
         self.size_spin.valueChanged.connect(lambda val: size_label.setText(f"Font Size: {val}"))
 
-        color_group = QGroupBox("Color")
-        color_layout = QVBoxLayout()
-        self.color_button = QPushButton()
-        self.color_button.setFixedSize(100, 30)
-        if self.current_color:
-            self.color_button.setStyleSheet(
-                f"QPushButton {{ background-color: {self.current_color.name()}; border: 2px solid #666; }}"
-            )
-        if self.color_callback:
-            self.color_button.clicked.connect(self.color_callback)
-        color_layout.addWidget(QLabel("Text Color:"))
-        color_layout.addWidget(self.color_button)
-        color_group.setLayout(color_layout)
-
         layout.addWidget(QLabel("Font:"))
         layout.addWidget(self.font_combo)
         layout.addWidget(size_label)
         layout.addWidget(self.size_spin)
-        layout.addWidget(color_group)
         layout.addStretch()
 
         self._settings_widget = text_widget
@@ -56,13 +41,6 @@ class TextTool(BaseTool):
 
     def needs_color(self) -> bool:
         return True
-
-    def update_color_display(self, color):
-        if hasattr(self, 'color_button'):
-            self.color_button.setStyleSheet(
-                f"QPushButton {{ background-color: {color.name()}; border: 2px solid #666; }}"
-            )
-            self.color_button.update()
 
     def mouse_press_event(self, event, scene, view=None):
         pos = event.pos()

@@ -4,8 +4,9 @@ Document class that wraps QGraphicsScene and manages command history.
 This is the central state manager for the paint application.
 """
 
-from PyQt5.QtWidgets import QGraphicsScene
+from PyQt5.QtWidgets import QGraphicsScene, QGraphicsPixmapItem
 from PyQt5.QtCore import QRectF
+from PyQt5.QtGui import QImage, QPainter, QPixmap, QColor
 from src.core.command_history import CommandHistory
 from src.core.command import ICommand
 
@@ -34,6 +35,41 @@ class Document:
         self.stroke_count = 0
         self.flatten_threshold = 50  
         self.background_pixmap_item = None
+        
+        self.canvas_image = QImage(int(width), int(height), QImage.Format_ARGB32)
+        self.canvas_image.fill(0x00000000)  # Transparent background
+        
+        checkerboard = self._create_checkerboard(int(width), int(height))
+        self.checkerboard_item = QGraphicsPixmapItem(checkerboard)
+        self.checkerboard_item.setData(0, 'checkerboard')
+        self.checkerboard_item.setZValue(-1)  # Behind canvas
+        self.scene.addItem(self.checkerboard_item)
+        
+        self.canvas_pixmap_item = QGraphicsPixmapItem(QPixmap.fromImage(self.canvas_image))
+        self.canvas_pixmap_item.setData(0, 'canvas')  # Tag for identification
+        self.scene.addItem(self.canvas_pixmap_item)
+    
+    def _create_checkerboard(self, width, height, square_size=16):
+        """Create a checkerboard pattern to show transparency."""
+        checkerboard = QImage(width, height, QImage.Format_RGB32)
+        painter = QPainter(checkerboard)
+        
+        light_gray = QColor(200, 200, 200)
+        dark_gray = QColor(150, 150, 150)
+        
+        for y in range(0, height, square_size):
+            for x in range(0, width, square_size):
+                if ((x // square_size) + (y // square_size)) % 2 == 0:
+                    painter.fillRect(x, y, square_size, square_size, light_gray)
+                else:
+                    painter.fillRect(x, y, square_size, square_size, dark_gray)
+        
+        painter.end()
+        return QPixmap.fromImage(checkerboard)
+    
+    def get_canvas_image(self):
+        """Get the current canvas image for pixel-based drawing."""
+        return self.canvas_pixmap_item.pixmap().toImage()
     
     def execute_command(self, command: ICommand):
         """
@@ -44,8 +80,8 @@ class Document:
         """
         self.history.execute(command, self.scene)
         
-        from src.commands.draw_command import DrawCommand
-        if isinstance(command, DrawCommand):
+        from src.commands.pixel_draw_command import PixelDrawCommand
+        if isinstance(command, PixelDrawCommand):
             self.stroke_count += 1
             if self.stroke_count >= self.flatten_threshold:
                 self.flatten_layers()

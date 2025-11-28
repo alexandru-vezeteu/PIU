@@ -1,11 +1,12 @@
 from PyQt5.QtWidgets import (QMainWindow, QGraphicsView, QGraphicsScene,
                              QToolBar, QDockWidget, QWidget, QVBoxLayout,
-                             QStackedWidget, QAction, QMenu, QFileDialog, QMessageBox)
+                             QStackedWidget, QAction, QMenu, QFileDialog, QMessageBox,
+                             QGraphicsPixmapItem)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPainter, QIcon, QColor, QKeySequence, QPixmap, QImage
 
 from src.core.document import Document
-from src.ui.tool_manager import ToolManager
+from src.core.action_orchestrator import ActionOrchestrator
 from src.ui.filter_manager import FilterManager
 from src.ui.color_picker_widget import ColorPickerWidget
 from src.ui.canvas_view import CanvasView
@@ -37,7 +38,7 @@ class ImageEditor(QMainWindow):
 
         self.current_color = QColor(0, 0, 0)
         self.document = Document()
-        self.tool_manager = ToolManager()
+        self.orchestrator = ActionOrchestrator()
         self.filter_manager = FilterManager()
 
         self.setup_central_widget()
@@ -46,10 +47,10 @@ class ImageEditor(QMainWindow):
         self.setup_ui()
         self.setup_menubar()
 
-        self.tool_manager.select_tool("paintbrush")
+        self.orchestrator.select_action("paintbrush")
 
     def setup_central_widget(self):
-        self.view = CanvasView(self.document, self.tool_manager)
+        self.view = CanvasView(self.document, self.orchestrator)
         self.setCentralWidget(self.view)
 
     def setup_tools(self):
@@ -68,9 +69,9 @@ class ImageEditor(QMainWindow):
         ]
 
         for tool in tools:
-            self.tool_manager.register_tool(tool)
+            self.orchestrator.register_action(tool)
 
-        self.tool_manager.set_tool_selection_callback(self.on_tool_selected)
+        self.orchestrator.set_action_selection_callback(self.on_tool_selected)
 
     def setup_filters(self):
         filters = [
@@ -97,10 +98,10 @@ class ImageEditor(QMainWindow):
         self.left_toolbar.setOrientation(Qt.Vertical)
         self.addToolBar(Qt.LeftToolBarArea, self.left_toolbar)
 
-        tools = self.tool_manager.get_tools()
+        tools = self.orchestrator.get_actions()
 
         self.left_toolbar.addAction(tools[0].create_action())
-        tools[0].get_action().triggered.connect(lambda: self.tool_manager.select_tool("selection"))
+        tools[0].get_action().triggered.connect(lambda: self.orchestrator.select_action("selection"))
 
         self.left_toolbar.addSeparator()
 
@@ -108,7 +109,7 @@ class ImageEditor(QMainWindow):
             action = tools[i].create_action()
             self.left_toolbar.addAction(action)
             tool = tools[i]
-            action.triggered.connect(lambda checked, t=tool: self.tool_manager.select_tool(t.get_tool_name()))
+            action.triggered.connect(lambda checked, t=tool: self.orchestrator.select_action(t.get_tool_name()))
 
         self.left_toolbar.addSeparator()
 
@@ -116,19 +117,19 @@ class ImageEditor(QMainWindow):
             action = tools[i].create_action()
             self.left_toolbar.addAction(action)
             tool = tools[i]
-            action.triggered.connect(lambda checked, t=tool: self.tool_manager.select_tool(t.get_tool_name()))
+            action.triggered.connect(lambda checked, t=tool: self.orchestrator.select_action(t.get_tool_name()))
 
         self.left_toolbar.addSeparator()
 
         action = tools[8].create_action()
         self.left_toolbar.addAction(action)
-        action.triggered.connect(lambda: self.tool_manager.select_tool("text"))
+        action.triggered.connect(lambda: self.orchestrator.select_action("text"))
 
         self.left_toolbar.addSeparator()
 
         action = tools[9].create_action()
         self.left_toolbar.addAction(action)
-        action.triggered.connect(lambda: self.tool_manager.select_tool("color_picker"))
+        action.triggered.connect(lambda: self.orchestrator.select_action("color_picker"))
 
         self.left_toolbar.addSeparator()
 
@@ -163,7 +164,7 @@ class ImageEditor(QMainWindow):
         self.options_stack = QStackedWidget()
 
         self.tool_panel_indices = {}
-        for tool in self.tool_manager.get_tools():
+        for tool in self.orchestrator.get_actions():
             panel = tool.create_settings_panel()
             index = self.options_stack.addWidget(panel)
             self.tool_panel_indices[tool.get_tool_name()] = index
@@ -380,7 +381,7 @@ class ImageEditor(QMainWindow):
 
     def on_color_changed(self, color):
         self.current_color = color
-        for tool in self.tool_manager.get_tools():
+        for tool in self.orchestrator.get_actions():
             if tool.needs_color() and hasattr(tool, 'update_color_display'):
                 tool.update_color_display(color)
     
@@ -416,6 +417,20 @@ class ImageEditor(QMainWindow):
         
         if reply == QMessageBox.Yes:
             self.document.scene.clear()
+            
+            checkerboard = self.document._create_checkerboard(int(self.document.width), int(self.document.height))
+            self.document.checkerboard_item = QGraphicsPixmapItem(checkerboard)
+            self.document.checkerboard_item.setData(0, 'checkerboard')
+            self.document.checkerboard_item.setZValue(-1)
+            self.document.scene.addItem(self.document.checkerboard_item)
+            
+            self.document.canvas_image = QImage(int(self.document.width), int(self.document.height), QImage.Format_ARGB32)
+            self.document.canvas_image.fill(0x00000000)  # Transparent
+            
+            self.document.canvas_pixmap_item = QGraphicsPixmapItem(QPixmap.fromImage(self.document.canvas_image))
+            self.document.canvas_pixmap_item.setData(0, 'canvas')
+            self.document.scene.addItem(self.document.canvas_pixmap_item)
+            
             self.document.clear_history()
             self.update_undo_redo_states()
             self.view.viewport().update()
@@ -487,18 +502,43 @@ class ImageEditor(QMainWindow):
     
     def zoom_in(self):
         """Zoom in by 25%."""
-        self.view.scale(1.25, 1.25)
+        zoom_factor = 1.25
+        new_zoom = self.view.current_zoom * zoom_factor
+        
+        if new_zoom <= self.view.max_zoom:
+            self.view.current_zoom = new_zoom
+            self.view.scale(zoom_factor, zoom_factor)
     
     def zoom_out(self):
-        """Zoom out by 25%."""
-        self.view.scale(0.8, 0.8)
+        """Zoom out by 20%."""
+        zoom_factor = 0.8
+        new_zoom = self.view.current_zoom * zoom_factor
+        
+        if new_zoom >= self.view.min_zoom:
+            self.view.current_zoom = new_zoom
+            self.view.scale(zoom_factor, zoom_factor)
     
     def zoom_reset(self):
         """Reset zoom to 100%."""
         self.view.resetTransform()
-        self.view.reset_zoom_tracking()
+        self.view.current_zoom = 1.0
     
     def fit_to_window(self):
-        """Fit the entire scene to the window."""
-        self.view.fitInView(self.document.scene.sceneRect(), Qt.KeepAspectRatio)
-        self.view.reset_zoom_tracking()
+        """Fit the entire canvas to the window."""
+        canvas_rect = self.document.scene.sceneRect()
+        viewport_rect = self.view.viewport().rect()
+        
+        zoom_x = viewport_rect.width() / canvas_rect.width()
+        zoom_y = viewport_rect.height() / canvas_rect.height()
+        
+        target_zoom = min(zoom_x, zoom_y) * 0.95
+        
+        scale_factor = target_zoom / self.view.current_zoom
+        
+        self.view.resetTransform()
+        self.view.current_zoom = 1.0
+        
+        self.view.scale(target_zoom, target_zoom)
+        self.view.current_zoom = target_zoom
+        
+        self.view.centerOn(canvas_rect.center())
