@@ -31,6 +31,9 @@ class Document:
         self.history = CommandHistory(max_undo=20)
         self.width = width
         self.height = height
+        self.stroke_count = 0
+        self.flatten_threshold = 50  
+        self.background_pixmap_item = None
     
     def execute_command(self, command: ICommand):
         """
@@ -40,6 +43,34 @@ class Document:
             command: The command to execute
         """
         self.history.execute(command, self.scene)
+        
+        from src.commands.draw_command import DrawCommand
+        if isinstance(command, DrawCommand):
+            self.stroke_count += 1
+            if self.stroke_count >= self.flatten_threshold:
+                self.flatten_layers()
+                self.stroke_count = 0
+    
+    def flatten_layers(self):
+        """Flatten all scene items into a single background image for performance."""
+        from PyQt5.QtGui import QImage, QPainter, QPixmap
+        from PyQt5.QtWidgets import QGraphicsPixmapItem
+        
+        canvas_rect = QRectF(0, 0, self.width, self.height)
+        image = QImage(int(self.width), int(self.height), QImage.Format_ARGB32)
+        image.fill(0xFFFFFFFF)  
+        painter = QPainter(image)
+        self.scene.render(painter, QRectF(), canvas_rect)
+        painter.end()
+        
+        self.scene.clear()
+        
+        pixmap = QPixmap.fromImage(image)
+        self.background_pixmap_item = QGraphicsPixmapItem(pixmap)
+        self.scene.addItem(self.background_pixmap_item)
+        self.history.clear()
+        
+        print(f"[Performance] Flattened {self.flatten_threshold} strokes into background")
     
     def undo(self) -> bool:
         """

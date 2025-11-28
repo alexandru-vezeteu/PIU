@@ -28,15 +28,15 @@ class SelectionTool(BaseTool):
     def get_tool_name(self) -> str:
         return "selection"
 
-    def mouse_press_event(self, event, scene):
+    def mouse_press_event(self, event, scene, view=None):
         mode = self.selection_mode_combo.currentText()
         pos = event.pos()
         print(f"[SelectionTool] Mouse pressed at ({pos.x()}, {pos.y()}) - Mode: {mode}")
 
-    def mouse_move_event(self, event, scene):
+    def mouse_move_event(self, event, scene, view=None):
         pos = event.pos()
         print(f"[SelectionTool] Mouse moved to ({pos.x()}, {pos.y()})")
 
-    def mouse_release_event(self, event, scene):
+    def mouse_release_event(self, event, scene, view=None):
         pos = event.pos()
         print(f"[SelectionTool] Mouse released at ({pos.x()}, {pos.y()})")

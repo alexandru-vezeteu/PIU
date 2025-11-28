@@ -56,3 +56,12 @@ class ZoomTool(BaseTool):
     
     def needs_color(self) -> bool:
         return False
+
+    def mouse_press_event(self, event, scene, view=None):
+        pass
+
+    def mouse_move_event(self, event, scene, view=None):
+        pass
+
+    def mouse_release_event(self, event, scene, view=None):
+        pass

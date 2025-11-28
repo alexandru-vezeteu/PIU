@@ -13,7 +13,7 @@ from src.core.command import ICommand
 class FilterCommand(ICommand):
     """Command for filter operations."""
     
-    def __init__(self, scene, filter_func, filter_name="Filter"):
+    def __init__(self, scene, filter_func, filter_name="Filter", canvas_rect=None):
         """
         Initialize filter command.
         
@@ -21,9 +21,11 @@ class FilterCommand(ICommand):
             scene: QGraphicsScene to operate on
             filter_func: Function that takes QImage and returns filtered QImage
             filter_name: Display name for the filter
+            canvas_rect: Optional QRectF for actual canvas area (defaults to scene rect)
         """
         self.filter_name = filter_name
         self.filter_func = filter_func
+        self.canvas_rect = canvas_rect
         
         self.before_image = self._capture_scene(scene)
         
@@ -31,12 +33,16 @@ class FilterCommand(ICommand):
         
     def _capture_scene(self, scene):
         """Capture the current scene as a QImage."""
-        rect = scene.sceneRect()
+        if self.canvas_rect:
+            rect = self.canvas_rect
+        else:
+            rect = scene.sceneRect()
+            
         image = QImage(int(rect.width()), int(rect.height()), QImage.Format_ARGB32)
         image.fill(0xFFFFFFFF) 
         
         painter = QPainter(image)
-        scene.render(painter)
+        scene.render(painter, QRectF(), rect)
         painter.end()
         
         return image

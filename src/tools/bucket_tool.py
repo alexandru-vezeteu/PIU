@@ -60,13 +60,13 @@ class BucketTool(BaseTool):
             )
             self.color_button.update()
 
-    def mouse_press_event(self, event, scene):
+    def mouse_press_event(self, event, scene, view=None):
         pos = event.pos()
         tolerance = self.tolerance_slider.value()
         print(f"[Paint Bucket] Clicked at ({pos.x()}, {pos.y()}) - Tolerance: {tolerance}")
 
-    def mouse_move_event(self, event, scene):
+    def mouse_move_event(self, event, scene, view=None):
         pass
 
-    def mouse_release_event(self, event, scene):
+    def mouse_release_event(self, event, scene, view=None):
         pass

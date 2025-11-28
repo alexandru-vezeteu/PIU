@@ -25,6 +25,8 @@ from src.filters.sharpen_filter import SharpenFilter
 from src.filters.hue_saturation_filter import HueSaturationFilter
 from src.filters.invert_filter import InvertFilter
 from src.filters.grayscale_filter import GrayscaleFilter
+from src.commands.filter_command import FilterCommand
+from PyQt5.QtCore import QRectF
 
 
 class ImageEditor(QMainWindow):
@@ -384,14 +386,17 @@ class ImageEditor(QMainWindow):
     
     def apply_filter_to_canvas(self, filter_obj):
         """Apply a filter to the canvas with undo/redo support."""
-        from src.commands.filter_command import FilterCommand
+
         
         print(f"[Filter] Applying {filter_obj.name} filter...")
+        
+        canvas_rect = QRectF(0, 0, self.document.width, self.document.height)
         
         command = FilterCommand(
             self.document.scene,
             filter_obj.apply_filter,
-            filter_obj.name
+            filter_obj.name,
+            canvas_rect
         )
         
         print(f"[Filter] FilterCommand created, executing...")
@@ -491,7 +496,9 @@ class ImageEditor(QMainWindow):
     def zoom_reset(self):
         """Reset zoom to 100%."""
         self.view.resetTransform()
+        self.view.reset_zoom_tracking()
     
     def fit_to_window(self):
         """Fit the entire scene to the window."""
         self.view.fitInView(self.document.scene.sceneRect(), Qt.KeepAspectRatio)
+        self.view.reset_zoom_tracking()

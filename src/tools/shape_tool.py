@@ -70,15 +70,15 @@ class ShapeTool(BaseTool):
             )
             self.color_button.update()
 
-    def mouse_press_event(self, event, scene):
+    def mouse_press_event(self, event, scene, view=None):
         pos = event.pos()
         mode = self.fill_combo.currentText()
         print(f"[{self.shape_type.capitalize()}] Mouse pressed at ({pos.x()}, {pos.y()}) - Mode: {mode}")
 
-    def mouse_move_event(self, event, scene):
+    def mouse_move_event(self, event, scene, view=None):
         pos = event.pos()
         print(f"[{self.shape_type.capitalize()}] Drawing shape to ({pos.x()}, {pos.y()})")
 
-    def mouse_release_event(self, event, scene):
+    def mouse_release_event(self, event, scene, view=None):
         pos = event.pos()
         print(f"[{self.shape_type.capitalize()}] Shape completed at ({pos.x()}, {pos.y()})")

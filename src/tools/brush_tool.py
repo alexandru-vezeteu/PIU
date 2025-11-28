@@ -2,7 +2,9 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, QSpinBox,
                              QSlider, QPushButton, QGroupBox, QAction)
 from PyQt5.QtCore import Qt
 from src.core.base_tool import BaseTool
-
+from PyQt5.QtWidgets import QGraphicsPathItem
+from PyQt5.QtGui import QPainterPath, QPen
+from PyQt5.QtCore import Qt
 
 class BrushTool(BaseTool):
     def __init__(self, tool_type="paintbrush", color_callback=None, current_color=None):
@@ -64,9 +66,7 @@ class BrushTool(BaseTool):
 
     def mouse_press_event(self, event, scene, view=None):
         """Start a new stroke."""
-        from PyQt5.QtWidgets import QGraphicsPathItem
-        from PyQt5.QtGui import QPainterPath, QPen
-        from PyQt5.QtCore import Qt
+
         
         if view:
             pos = view.mapToScene(event.pos())

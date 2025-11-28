@@ -64,14 +64,14 @@ class TextTool(BaseTool):
             )
             self.color_button.update()
 
-    def mouse_press_event(self, event, scene):
+    def mouse_press_event(self, event, scene, view=None):
         pos = event.pos()
         font = self.font_combo.currentText()
         size = self.size_spin.value()
         print(f"[Text] Clicked at ({pos.x()}, {pos.y()}) - Font: {font}, Size: {size}")
 
-    def mouse_move_event(self, event, scene):
+    def mouse_move_event(self, event, scene, view=None):
         pass
 
-    def mouse_release_event(self, event, scene):
+    def mouse_release_event(self, event, scene, view=None):
         pass
