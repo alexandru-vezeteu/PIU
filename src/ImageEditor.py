@@ -277,6 +277,13 @@ class ImageEditor(QMainWindow):
         edit_menu.addAction(self.redo_action)
         
         edit_menu.addSeparator()
+        
+        reset_image_action = QAction("Reset", self)
+        reset_image_action.setShortcut("Ctrl+Shift+R")
+        reset_image_action.triggered.connect(self.reset_image)
+        edit_menu.addAction(reset_image_action)
+        
+        edit_menu.addSeparator()
         edit_menu.addAction("Cut")
         edit_menu.addAction("Copy")
         edit_menu.addAction("Paste")
@@ -368,7 +375,7 @@ class ImageEditor(QMainWindow):
             self.options_stack.addWidget(settings_widget)
             self.options_stack.setCurrentWidget(settings_widget)
         
-        if filter_name == "invert" and hasattr(filter_obj, 'apply_btn'):
+        if hasattr(filter_obj, 'apply_btn'):
             try:
                 filter_obj.apply_btn.clicked.disconnect()
             except:
@@ -434,6 +441,22 @@ class ImageEditor(QMainWindow):
             self.document.clear_history()
             self.update_undo_redo_states()
             self.view.viewport().update()
+    
+    def reset_image(self):
+        """Reset the image to a blank canvas, clearing all drawings and filters."""
+        reply = QMessageBox.question(self, 'Reset',
+                                    'Reset the image? All drawings and filters will be cleared.',
+                                    QMessageBox.Yes | QMessageBox.No,
+                                    QMessageBox.No)
+        
+        if reply == QMessageBox.Yes:
+            self.document.canvas_image.fill(0x00000000)
+            self.document.canvas_pixmap_item.setPixmap(QPixmap.fromImage(self.document.canvas_image))
+            
+            self.document.clear_history()
+            self.update_undo_redo_states()
+            self.view.viewport().update()
+            print("[Edit] Image reset to blank canvas")
     
     def open_document(self):
         """Open an image file."""
