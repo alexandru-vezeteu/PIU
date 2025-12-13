@@ -23,14 +23,14 @@ class EraserTool(BaseTool):
         layout = QVBoxLayout(eraser_widget)
 
         size_label = QLabel("Eraser Size: 10")
-        self.size_spin = QSpinBox()
-        self.size_spin.setRange(1, 100)
-        self.size_spin.setValue(10)
-        self.size_spin.valueChanged.connect(lambda val: size_label.setText(f"Eraser Size: {val}"))
+        self.size_slider = QSlider(Qt.Horizontal)
+        self.size_slider.setRange(1, 100)
+        self.size_slider.setValue(10)
+        self.size_slider.valueChanged.connect(lambda val: size_label.setText(f"Eraser Size: {val}"))
 
         layout.addWidget(QLabel("Size:"))
         layout.addWidget(size_label)
-        layout.addWidget(self.size_spin)
+        layout.addWidget(self.size_slider)
         layout.addStretch()
 
         self._settings_widget = eraser_widget
@@ -78,7 +78,7 @@ class EraserTool(BaseTool):
         pixmap = canvas_item.pixmap()
         painter = QPainter(pixmap)
         
-        size = self.size_spin.value()
+        size = self.size_slider.value()
         
         painter.setCompositionMode(QPainter.CompositionMode_Clear)
         

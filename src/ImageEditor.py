@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QMainWindow, QGraphicsView, QGraphicsScene,
                              QStackedWidget, QAction, QMenu, QFileDialog, QMessageBox,
                              QGraphicsPixmapItem)
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPainter, QIcon, QColor, QKeySequence, QPixmap, QImage
+from PyQt5.QtGui import QPainter, QIcon, QColor, QKeySequence, QPixmap, QImage, QBrush
 
 from src.core.document import Document
 from src.core.action_orchestrator import ActionOrchestrator
@@ -181,6 +181,11 @@ class ImageEditor(QMainWindow):
         self.color_picker_widget = ColorPickerWidget(self.current_color)
         self.color_picker_widget.set_color_change_callback(self.on_color_changed)
         main_layout.addWidget(self.color_picker_widget)
+        
+        for tool in self.orchestrator.get_actions():
+            if tool.get_tool_name() == "color_picker":
+                tool.set_color_picker_widget(self.color_picker_widget)
+                break
 
         self.right_dock.setWidget(options_widget)
         self.addDockWidget(Qt.RightDockWidgetArea, self.right_dock)
@@ -284,9 +289,26 @@ class ImageEditor(QMainWindow):
         edit_menu.addAction(reset_image_action)
         
         edit_menu.addSeparator()
-        edit_menu.addAction("Cut")
-        edit_menu.addAction("Copy")
-        edit_menu.addAction("Paste")
+        
+        cut_action = QAction("Cut", self)
+        cut_action.setShortcut(QKeySequence.Cut)
+        cut_action.triggered.connect(self.cut_selection)
+        edit_menu.addAction(cut_action)
+        
+        copy_action = QAction("Copy", self)
+        copy_action.setShortcut(QKeySequence.Copy)
+        copy_action.triggered.connect(self.copy_selection)
+        edit_menu.addAction(copy_action)
+        
+        paste_action = QAction("Paste", self)
+        paste_action.setShortcut(QKeySequence.Paste)
+        paste_action.triggered.connect(self.paste_selection)
+        edit_menu.addAction(paste_action)
+        
+        delete_action = QAction("Delete Selection", self)
+        delete_action.setShortcut(QKeySequence.Delete)
+        delete_action.triggered.connect(self.delete_selection)
+        edit_menu.addAction(delete_action)
         
         self.update_undo_redo_states()
 
@@ -389,8 +411,10 @@ class ImageEditor(QMainWindow):
     def on_color_changed(self, color):
         self.current_color = color
         for tool in self.orchestrator.get_actions():
-            if tool.needs_color() and hasattr(tool, 'update_color_display'):
-                tool.update_color_display(color)
+            if tool.needs_color():
+                tool.current_color = color
+                if hasattr(tool, 'update_color_display'):
+                    tool.update_color_display(color)
     
     def apply_filter_to_canvas(self, filter_obj):
         """Apply a filter to the canvas with undo/redo support."""
@@ -513,28 +537,58 @@ class ImageEditor(QMainWindow):
     
     def save_document_as(self):
         """Save the document with a new filename."""
-        filename, _ = QFileDialog.getSaveFileName(
+        filename, selected_filter = QFileDialog.getSaveFileName(
             self,
             "Save Image",
             "",
-            "PNG Image (*.png);;JPEG Image (*.jpg);;All Files (*)"
+            "PNG Image (*.png);;JPEG Image (*.jpg *.jpeg);;BMP Image (*.bmp);;All Files (*)"
         )
         
         if filename:
+            if "PNG" in selected_filter and not filename.lower().endswith('.png'):
+                filename += '.png'
+            elif "JPEG" in selected_filter and not (filename.lower().endswith('.jpg') or filename.lower().endswith('.jpeg')):
+                filename += '.jpg'
+            elif "BMP" in selected_filter and not filename.lower().endswith('.bmp'):
+                filename += '.bmp'
+            
             self._save_to_file(filename)
             self.current_filename = filename
     
     def _save_to_file(self, filename):
         """Save the scene to an image file."""
-        rect = self.document.scene.sceneRect()
-        image = QImage(int(rect.width()), int(rect.height()), QImage.Format_ARGB32)
-        image.fill(0xFFFFFFFF)
+        items_to_hide = []
+        for item in self.document.scene.items():
+            if item.data(0) == 'checkerboard' or item.data(0) == 'selection':
+                if item.isVisible():
+                    items_to_hide.append(item)
+                    item.setVisible(False)
         
+        old_bg_brush = self.document.scene.backgroundBrush()
+        self.document.scene.setBackgroundBrush(QBrush(Qt.NoBrush))
+        
+        rect = self.document.scene.sceneRect()
+        image = QImage(int(rect.width()), int(rect.height()), QImage.Format_ARGB32_Premultiplied)
+        
+        if filename.lower().endswith('.png'):
+            image.fill(QColor(0, 0, 0, 0))
+        else:
+            image.fill(Qt.white)
+            
         painter = QPainter(image)
-        self.document.scene.render(painter)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        
+        target_rect = QRectF(0, 0, rect.width(), rect.height())
+        self.document.scene.render(painter, target_rect, rect)
         painter.end()
         
+        self.document.scene.setBackgroundBrush(old_bg_brush)
+        for item in items_to_hide:
+            item.setVisible(True)
+            
         if image.save(filename):
+            print(f"[Save] Saved to {filename} (Size: {image.width()}x{image.height()})")
             QMessageBox.information(self, "Success", f"Image saved to {filename}")
         else:
             QMessageBox.warning(self, "Error", "Failed to save image.")
@@ -581,3 +635,114 @@ class ImageEditor(QMainWindow):
         self.view.current_zoom = target_zoom
         
         self.view.centerOn(canvas_rect.center())
+    
+    def _get_selection_tool(self):
+        """Get the selection tool if it exists."""
+        for tool in self.orchestrator.get_actions():
+            if tool.get_tool_name() == "selection":
+                return tool
+        return None
+    
+    def _get_selection_rect(self):
+        """Get the current selection rectangle."""
+        tool = self._get_selection_tool()
+        if tool and tool.selection_rect:
+            return tool.selection_rect
+        return None
+    
+    def copy_selection(self):
+        """Copy the selected area to clipboard."""
+        selection_rect = self._get_selection_rect()
+        if not selection_rect:
+            print("[Edit] No selection to copy")
+            return
+        
+        canvas_image = self.document.canvas_pixmap_item.pixmap().toImage()
+        
+        x = int(selection_rect.x())
+        y = int(selection_rect.y())
+        w = int(selection_rect.width())
+        h = int(selection_rect.height())
+        
+        x = max(0, x)
+        y = max(0, y)
+        w = min(w, canvas_image.width() - x)
+        h = min(h, canvas_image.height() - y)
+        
+        copied_image = canvas_image.copy(x, y, w, h)
+        
+        self.clipboard_image = copied_image
+        self.clipboard_offset = (x, y)
+        
+        print(f"[Edit] Copied {w}x{h} pixels from ({x}, {y})")
+    
+    def cut_selection(self):
+        """Cut the selected area (copy + delete)."""
+        self.copy_selection()
+        self.delete_selection()
+    
+    def paste_selection(self):
+        """Paste from clipboard at mouse position."""
+        from src.commands.pixel_draw_command import PixelDrawCommand
+        
+        if not hasattr(self, 'clipboard_image') or self.clipboard_image is None:
+            print("[Edit] Nothing to paste")
+            return
+        
+        before_image = self.document.canvas_pixmap_item.pixmap().toImage().copy()
+        
+        cursor_pos = self.view.mapFromGlobal(self.cursor().pos())
+        scene_pos = self.view.mapToScene(cursor_pos)
+        
+        paste_x = int(scene_pos.x())
+        paste_y = int(scene_pos.y())
+        
+        paste_x = max(0, min(paste_x, self.document.width - self.clipboard_image.width()))
+        paste_y = max(0, min(paste_y, self.document.height - self.clipboard_image.height()))
+        
+        painter = QPainter(self.document.canvas_image)
+        painter.drawImage(paste_x, paste_y, self.clipboard_image)
+        painter.end()
+        
+        self.document.canvas_pixmap_item.setPixmap(QPixmap.fromImage(self.document.canvas_image))
+        
+        after_image = self.document.canvas_image.copy()
+        command = PixelDrawCommand(before_image, after_image, "Paste")
+        self.document.execute_command(command)
+        self.update_undo_redo_states()
+        
+        print(f"[Edit] Pasted at ({paste_x}, {paste_y})")
+    
+    def delete_selection(self):
+        """Delete (clear) the selected area."""
+        from src.commands.pixel_draw_command import PixelDrawCommand
+        
+        selection_rect = self._get_selection_rect()
+        if not selection_rect:
+            print("[Edit] No selection to delete")
+            return
+        
+        before_image = self.document.canvas_pixmap_item.pixmap().toImage().copy()
+        
+        x = int(selection_rect.x())
+        y = int(selection_rect.y())
+        w = int(selection_rect.width())
+        h = int(selection_rect.height())
+        
+        painter = QPainter(self.document.canvas_image)
+        painter.setCompositionMode(QPainter.CompositionMode_Clear)
+        painter.fillRect(x, y, w, h, Qt.transparent)
+        painter.end()
+        
+        self.document.canvas_pixmap_item.setPixmap(QPixmap.fromImage(self.document.canvas_image))
+        
+        after_image = self.document.canvas_image.copy()
+        command = PixelDrawCommand(before_image, after_image, "Delete Selection")
+        self.document.execute_command(command)
+        self.update_undo_redo_states()
+        
+        tool = self._get_selection_tool()
+        if tool:
+            tool.clear_selection(self.document.scene)
+        
+        print(f"[Edit] Deleted selection at ({x}, {y}) size {w}x{h}")

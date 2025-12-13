@@ -1,10 +1,16 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, QAction)
+from PyQt5.QtGui import QColor
 from src.core.base_tool import BaseTool
 
 
 class ColorPickerTool(BaseTool):
     def __init__(self):
         super().__init__("Eyedropper", None)
+        self.color_picker_widget = None
+
+    def set_color_picker_widget(self, widget):
+        """Set reference to the color picker widget for updating colors."""
+        self.color_picker_widget = widget
 
     def create_action(self) -> QAction:
         self._action = QAction(self.name)
@@ -28,8 +34,36 @@ class ColorPickerTool(BaseTool):
         return "color_picker"
 
     def mouse_press_event(self, event, scene, view=None):
-        pos = event.pos()
-        print(f"[Eyedropper] Picking color at ({pos.x()}, {pos.y()})")
+        if view:
+            scene_pos = view.mapToScene(event.pos())
+        else:
+            scene_pos = event.pos()
+        
+        x = int(scene_pos.x())
+        y = int(scene_pos.y())
+        
+        canvas_item = None
+        for item in scene.items():
+            if hasattr(item, 'pixmap') and item.data(0) == 'canvas':
+                canvas_item = item
+                break
+        
+        if not canvas_item:
+            print(f"[Eyedropper] No canvas found")
+            return
+        
+        canvas_image = canvas_item.pixmap().toImage()
+        
+        if x < 0 or y < 0 or x >= canvas_image.width() or y >= canvas_image.height():
+            print(f"[Eyedropper] Click outside canvas bounds")
+            return
+        
+        pixel_color = canvas_image.pixelColor(x, y)
+        
+        print(f"[Eyedropper] Picked color {pixel_color.name()} at ({x}, {y})")
+        
+        if self.color_picker_widget:
+            self.color_picker_widget.set_color(pixel_color)
 
     def mouse_move_event(self, event, scene, view=None):
         pass

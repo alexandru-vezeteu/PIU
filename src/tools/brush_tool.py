@@ -104,7 +104,8 @@ class BrushTool(BaseTool):
         else:
             current_pos = event.pos()
         
-        from PyQt5.QtGui import QPainter, QPen, QPixmap
+        from PyQt5.QtGui import QPainter, QPen, QPixmap, QBrush
+        import random
         
         canvas_item = None
         for item in scene.items():
@@ -124,16 +125,29 @@ class BrushTool(BaseTool):
         size = self.size_spin.value()
         opacity = self.opacity_slider.value() / 100.0
         
-        pen = QPen(self.current_color if hasattr(self, 'current_color') else Qt.black)
-        pen.setWidth(size)
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
+        color = self.current_color if hasattr(self, 'current_color') and self.current_color else Qt.black
         
-        painter.setPen(pen)
-        painter.setOpacity(opacity)
-        painter.setRenderHint(QPainter.Antialiasing)
-        
-        painter.drawLine(self.last_pos, current_pos)
+        if self.tool_type == "airbrush":
+            painter.setOpacity(opacity * 0.3)
+            num_dots = max(5, size // 2)
+            for _ in range(num_dots):
+                offset_x = random.gauss(0, size / 3)
+                offset_y = random.gauss(0, size / 3)
+                dot_x = current_pos.x() + offset_x
+                dot_y = current_pos.y() + offset_y
+                dot_size = random.randint(1, max(2, size // 4))
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(color))
+                painter.drawEllipse(int(dot_x), int(dot_y), dot_size, dot_size)
+        else:
+            pen = QPen(color)
+            pen.setWidth(size)
+            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.RoundJoin)
+            painter.setPen(pen)
+            painter.setOpacity(opacity)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.drawLine(self.last_pos, current_pos)
         
         painter.end()
         

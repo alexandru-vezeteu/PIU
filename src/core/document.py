@@ -94,16 +94,34 @@ class Document:
         
         canvas_rect = QRectF(0, 0, self.width, self.height)
         image = QImage(int(self.width), int(self.height), QImage.Format_ARGB32)
-        image.fill(0xFFFFFFFF)  
+        image.fill(0x00000000)
+        
+        items_to_hide = []
+        for item in self.scene.items():
+            if item.data(0) == 'checkerboard' or item.data(0) == 'selection':
+                if item.isVisible():
+                    items_to_hide.append(item)
+                    item.setVisible(False)
+            
         painter = QPainter(image)
         self.scene.render(painter, QRectF(), canvas_rect)
         painter.end()
         
+            item.setVisible(True)
+        
         self.scene.clear()
         
-        pixmap = QPixmap.fromImage(image)
-        self.background_pixmap_item = QGraphicsPixmapItem(pixmap)
-        self.scene.addItem(self.background_pixmap_item)
+        checkerboard = self._create_checkerboard(int(self.width), int(self.height))
+        self.checkerboard_item = QGraphicsPixmapItem(checkerboard)
+        self.checkerboard_item.setData(0, 'checkerboard')
+        self.checkerboard_item.setZValue(-1)
+        self.scene.addItem(self.checkerboard_item)
+        
+        self.canvas_image = image
+        self.canvas_pixmap_item = QGraphicsPixmapItem(QPixmap.fromImage(image))
+        self.canvas_pixmap_item.setData(0, 'canvas')
+        self.scene.addItem(self.canvas_pixmap_item)
+        
         self.history.clear()
         
         print(f"[Performance] Flattened {self.flatten_threshold} strokes into background")
